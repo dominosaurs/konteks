@@ -4,7 +4,11 @@ import { resolveProjectContext } from '@/modules/project/context'
 
 import { mkdir } from '@/support/file-manager'
 
-type ErrorLogSurface = 'cli' | 'mcp_prompt' | 'mcp_tool'
+type ErrorLogSurface =
+    | 'background_maintenance'
+    | 'cli'
+    | 'mcp_prompt'
+    | 'mcp_tool'
 
 type ErrorLogInput = {
     error: unknown

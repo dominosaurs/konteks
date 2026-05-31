@@ -56,6 +56,7 @@ async function withProjectRoot<T>(
 }
 
 afterEach(async () => {
+    await globalThis.__konteksWaitForVectorIndexRepairsForTests?.()
     globalThis.__konteksEmbeddingProviderForTests = undefined
     globalThis.__konteksVectorIndexConnectionFactoryForTests = undefined
     await Promise.all(tempDirs.splice(0).map(path => rm(path)))
