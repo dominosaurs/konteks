@@ -16,6 +16,9 @@ export default function sharedEmbeddingProvider():
     if (globalThis.__konteksEmbeddingProviderForTests) {
         return globalThis.__konteksEmbeddingProviderForTests
     }
+    if (process.env.KONTEKS_DISABLE_SHARED_EMBEDDING_PROVIDER === '1') {
+        return undefined
+    }
     if (isSqliteTestRuntime()) {
         return undefined
     }
