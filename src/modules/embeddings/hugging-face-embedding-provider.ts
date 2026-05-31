@@ -256,7 +256,7 @@ function toFloat32Array(value: unknown): Float32Array {
     throw new Error('Unsupported embedding output format from provider.')
 }
 
-export function toOwnedFloat32Array(value: unknown): Float32Array {
+function toOwnedFloat32Array(value: unknown): Float32Array {
     try {
         return toFloat32Array(value).slice()
     } finally {
