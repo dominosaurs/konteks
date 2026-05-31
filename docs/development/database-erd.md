@@ -247,7 +247,7 @@ but their table options live in `src/database/utils/migrations`.
 `memory_fts`.
 
 Semantic retrieval uses sqlite-vec virtual tables created per embedding dimension through Bun's SQLite extension loader when available, then falls back to Node's built-in SQLite extension loader. `target_embeddings` remains the
-durable compatibility store and exact fallback source. `vector_index_entries` records which durable embeddings have been copied into the sqlite-vec virtual table for their dimension in `.konteks/vectors.sqlite`. A vector is considered fresh only when its model-aware `embedding_hash` matches the current retrieval text and the sqlite-vec metadata matches the same hash. Search validates native rows against durable vectors once per process; unhealthy groups use bounded exact fallback immediately and schedule best-effort background repair from stored blobs.
+durable compatibility store and exact fallback source. `vector_index_entries` records which durable embeddings have been copied into the sqlite-vec virtual table for their dimension in `.konteks/vectors.sqlite`. A vector is considered fresh only when its model-aware `embedding_hash` matches the current retrieval text and the sqlite-vec metadata matches the same hash. Search validates native rows against durable vectors once per process with adaptive memory-aware batches; unhealthy groups use exact fallback immediately and schedule best-effort background repair from stored blobs.
 
 ## Main Domains
 

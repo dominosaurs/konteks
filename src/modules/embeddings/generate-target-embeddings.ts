@@ -6,6 +6,7 @@ import {
     upsertVectorIndexTargets,
     type VectorIndexTarget,
 } from '@/database/services/vector-index'
+import { adaptiveBatchSize } from '@/support/adaptive-batch-size'
 import contentHash from '@/support/content-hash'
 import type { EmbeddingProviderContract } from '@/types/embedding-provider'
 import type { ExtractionProgressReporter } from '@/types/progress'
@@ -51,7 +52,8 @@ type RetrievalDocumentCursor = Pick<
     'target_id' | 'target_type'
 >
 
-const EMBEDDING_BATCH_SIZE = 250
+const SQLITE_TARGET_LOOKUP_BIND_BATCH_SIZE = 400
+const RETRIEVAL_DOCUMENT_ROW_OVERHEAD_BYTES = 4096
 
 export type EmbeddingTarget = {
     targetId: string
@@ -78,10 +80,14 @@ export default async function generateTargetEmbeddings(
         await countRetrievalDocuments(targetTypes),
         options,
     )
+    const batchSize = retrievalDocumentBatchSize(state.total)
     let cursor: RetrievalDocumentCursor | undefined
-
     while (true) {
-        const rows = await loadRetrievalDocumentPage(targetTypes, cursor)
+        const rows = await loadRetrievalDocumentPage(
+            targetTypes,
+            cursor,
+            batchSize,
+        )
         await embedRetrievalDocumentRows(
             provider,
             rows,
@@ -89,11 +95,12 @@ export default async function generateTargetEmbeddings(
             state,
             options,
         )
-        if (rows.length < EMBEDDING_BATCH_SIZE) {
-            return finishEmbeddingRun(state, options)
+        if (rows.length < batchSize) {
+            break
         }
         cursor = rows.at(-1)
     }
+    return finishEmbeddingRun(state, options)
 }
 
 export async function generateEmbeddingsForTargets(
@@ -109,7 +116,10 @@ export async function generateEmbeddingsForTargets(
     }
 
     const state = embeddingRunState(targets.length, options)
-    for (const targetChunk of chunks(targets)) {
+    for (const targetChunk of chunks(
+        targets,
+        SQLITE_TARGET_LOOKUP_BIND_BATCH_SIZE,
+    )) {
         const rows = await loadTargetRetrievalDocuments(targetChunk)
         await embedRetrievalDocumentRows(
             provider,
@@ -380,7 +390,8 @@ where target_type in (${sql.join(
 
 async function loadRetrievalDocumentPage(
     targetTypes: TargetType[],
-    cursor?: RetrievalDocumentCursor,
+    cursor: RetrievalDocumentCursor | undefined,
+    limit: number,
 ): Promise<RetrievalDocumentRow[]> {
     const db = await getDb()
     return await db.all<RetrievalDocumentRow>(sql`
@@ -393,19 +404,9 @@ where target_type in (${sql.join(
         targetTypes.map(type => sql`${type}`),
         sql`, `,
     )})
-  ${
-      cursor
-          ? sql`and (
-                target_type > ${cursor.target_type}
-                or (
-                    target_type = ${cursor.target_type}
-                    and target_id > ${cursor.target_id}
-                )
-            )`
-          : sql``
-}
+  ${retrievalDocumentCursor(cursor)}
 order by target_type, target_id
-limit ${EMBEDDING_BATCH_SIZE}
+limit ${limit}
 `)
 }
 
@@ -438,7 +439,9 @@ async function loadExistingEmbeddingHashes(
     }
 
     const db = await getDb()
-    const existingRows = await db.all<ExistingEmbeddingRow>(sql`
+    const hashes = new Map<string, ExistingEmbeddingRow>()
+    for (const rowChunk of chunks(rows, SQLITE_TARGET_LOOKUP_BIND_BATCH_SIZE)) {
+        const existingRows = await db.all<ExistingEmbeddingRow>(sql`
 select
     te.embedding_hash,
     te.target_id,
@@ -455,28 +458,48 @@ left join vector_index_entries vie
 where te.model = ${provider.model}
   and te.dimensions = ${provider.dimensions}
   and (${sql.join(
-      rows.map(
+      rowChunk.map(
           row =>
               sql`(te.target_id = ${row.target_id} and te.target_type = ${row.target_type})`,
       ),
       sql` or `,
   )})
 `)
-
-    const hashes = new Map<string, ExistingEmbeddingRow>()
-    for (const row of existingRows) {
-        const key = targetKey(row.target_type, row.target_id)
-        hashes.set(key, row)
+        for (const row of existingRows) {
+            const key = targetKey(row.target_type, row.target_id)
+            hashes.set(key, row)
+        }
     }
     return hashes
 }
 
-function chunks<T>(items: T[]): T[][] {
+function chunks<T>(items: T[], size: number): T[][] {
     const result: T[][] = []
-    for (let index = 0; index < items.length; index += EMBEDDING_BATCH_SIZE) {
-        result.push(items.slice(index, index + EMBEDDING_BATCH_SIZE))
+    for (let index = 0; index < items.length; index += size) {
+        result.push(items.slice(index, index + size))
     }
     return result
+}
+
+function retrievalDocumentBatchSize(total: number): number {
+    return (
+        adaptiveBatchSize({
+            estimatedItemBytes: RETRIEVAL_DOCUMENT_ROW_OVERHEAD_BYTES,
+            totalItems: total,
+        }) || 500
+    )
+}
+
+function retrievalDocumentCursor(cursor: RetrievalDocumentCursor | undefined) {
+    return cursor
+        ? sql`and (
+                target_type > ${cursor.target_type}
+                or (
+                    target_type = ${cursor.target_type}
+                    and target_id > ${cursor.target_id}
+                )
+            )`
+        : sql``
 }
 
 function workItemStatus(

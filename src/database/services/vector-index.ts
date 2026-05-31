@@ -5,6 +5,7 @@ import getDb from '@/database/actions/_db'
 import { vectorIndexEntries } from '@/database/schema'
 import { isSqliteTestRuntime } from '@/database/support/test-runtime'
 import { loadProjectContext } from '@/modules/project/context'
+import { adaptiveBatchSize } from '@/support/adaptive-batch-size'
 import { appendProjectErrorLog } from '@/support/error-log'
 
 type TargetType = 'section' | 'diary' | 'memory' | 'module'
@@ -84,6 +85,8 @@ type VectorIndexRow = {
     target_type: TargetType
 }
 
+type VectorIndexCursor = Pick<VectorIndexRow, 'target_id' | 'target_type'>
+
 declare global {
     var __konteksVectorIndexConnectionFactoryForTests:
         | VectorIndexConnectionFactory
@@ -95,7 +98,9 @@ declare global {
 
 const BUN_SQLITE_MODULE = 'bun:sqlite'
 const NODE_SQLITE_MODULE = 'node:sqlite'
-const SQLITE_BIND_CHUNK_SIZE = 250
+const SQLITE_DELETE_BIND_BATCH_SIZE = 500
+const SQLITE_INSERT_BIND_BATCH_SIZE = 100
+const VECTOR_ROW_OVERHEAD_BYTES = 1024
 let activeConnection: VectorIndexConnection | undefined
 let bunSqlitePromise: Promise<BunSqliteModule | undefined> | undefined
 let nodeSqlitePromise: Promise<NodeSqliteModule | undefined> | undefined
@@ -152,25 +157,23 @@ insert into ${vecTable} (
 ) values (?, ?, ?, ?, ?)
 `)
         try {
-            for (const targetChunk of chunks(groupedTargets)) {
-                withNativeTransaction(connection.database, () => {
-                    for (const target of targetChunk) {
-                        deleteStatement.run(
-                            target.targetId,
-                            target.targetType,
-                            target.model,
-                        )
-                        insertStatement.run(
-                            vectorToBlob(target.vector),
-                            target.targetId,
-                            target.targetType,
-                            target.model,
-                            target.embeddingHash,
-                        )
-                    }
-                })
-                await upsertVectorIndexEntries(targetChunk, vecTable)
-            }
+            withNativeTransaction(connection.database, () => {
+                for (const target of groupedTargets) {
+                    deleteStatement.run(
+                        target.targetId,
+                        target.targetType,
+                        target.model,
+                    )
+                    insertStatement.run(
+                        vectorToBlob(target.vector),
+                        target.targetId,
+                        target.targetType,
+                        target.model,
+                        target.embeddingHash,
+                    )
+                }
+            })
+            await upsertVectorIndexEntries(groupedTargets, vecTable)
         } finally {
             deleteStatement.finalize?.()
             insertStatement.finalize?.()
@@ -275,35 +278,51 @@ async function validateVectorIndexGroup(
         return true
     }
 
-    let cursor: Pick<VectorIndexRow, 'target_id' | 'target_type'> | undefined
     const tableName = tableNameForDimensions(input.dimensions)
-    while (true) {
-        const durableRows = await loadDurableVectorPage(input, cursor)
-        const metadataRows = await loadVectorIndexEntryPage(input, cursor)
-        if (!hasVectorTable(connection.database, tableName)) {
-            if (durableRows.length > 0 || metadataRows.length > 0) {
-                return false
-            }
-            healthyGroups.add(key)
-            return true
+    const totalVectors = await countDurableVectors(input)
+    const batchSize = vectorStreamBatchSize(input, totalVectors)
+    const durableRows = await loadDurableVectorPage(input, undefined, batchSize)
+    const metadataRows = await loadVectorIndexEntryPage(
+        input,
+        undefined,
+        batchSize,
+    )
+    if (!hasVectorTable(connection.database, tableName)) {
+        if (durableRows.length > 0 || metadataRows.length > 0) {
+            return false
         }
+        healthyGroups.add(key)
+        return true
+    }
+
+    let cursor: VectorIndexCursor | undefined
+    while (true) {
+        const pageDurableRows =
+            cursor === undefined
+                ? durableRows
+                : await loadDurableVectorPage(input, cursor, batchSize)
+        const pageMetadataRows =
+            cursor === undefined
+                ? metadataRows
+                : await loadVectorIndexEntryPage(input, cursor, batchSize)
         const nativeRows = loadNativeVectorPage(
             connection.database,
             tableName,
             input,
             cursor,
+            batchSize,
         )
         if (
-            !sameVectorIndexRows(durableRows, metadataRows) ||
-            !sameVectorIndexRows(durableRows, nativeRows)
+            !sameVectorIndexRows(pageDurableRows, pageMetadataRows) ||
+            !sameVectorIndexRows(pageDurableRows, nativeRows)
         ) {
             return false
         }
-        if (durableRows.length < SQLITE_BIND_CHUNK_SIZE) {
+        if (pageDurableRows.length < batchSize) {
             healthyGroups.add(key)
             return true
         }
-        cursor = durableRows.at(-1)
+        cursor = pageDurableRows.at(-1)
     }
 }
 
@@ -341,16 +360,17 @@ async function repairVectorIndexGroup(
     input: VectorIndexGroup,
 ): Promise<void> {
     await resetVectorIndexGroup(connection, input)
-    let cursor:
-        | Pick<VectorEmbeddingRow, 'target_id' | 'target_type'>
-        | undefined
+    const createdAt = new Date().toISOString()
+    const totalVectors = await countDurableVectors(input)
+    const batchSize = vectorStreamBatchSize(input, totalVectors)
+    let cursor: VectorIndexCursor | undefined
 
     while (true) {
-        const rows = await loadDurableVectorPage(input, cursor)
+        const rows = await loadDurableVectorPage(input, cursor, batchSize)
         await upsertVectorIndexTargetsWithConnection(
             connection,
             rows.map(row => ({
-                createdAt: new Date().toISOString(),
+                createdAt,
                 dimensions: input.dimensions,
                 embeddingHash: row.embedding_hash,
                 model: row.model,
@@ -359,7 +379,7 @@ async function repairVectorIndexGroup(
                 vector: blobToFloat32Array(row.vector_blob),
             })),
         )
-        if (rows.length < SQLITE_BIND_CHUNK_SIZE) {
+        if (rows.length < batchSize) {
             break
         }
         cursor = rows.at(-1)
@@ -450,7 +470,10 @@ function deleteNativeVectorTargets(
     targetIds?: string[],
 ): void {
     if (targetIds && targetIds.length > 0) {
-        for (const targetIdChunk of chunks(targetIds)) {
+        for (const targetIdChunk of chunks(
+            targetIds,
+            SQLITE_DELETE_BIND_BATCH_SIZE,
+        )) {
             const placeholders = targetIdChunk.map(() => '?').join(', ')
             withStatement(
                 database,
@@ -560,9 +583,21 @@ async function loadNodeSqlite(): Promise<NodeSqliteModule | undefined> {
     return await nodeSqlitePromise
 }
 
+async function countDurableVectors(input: VectorIndexGroup): Promise<number> {
+    const db = await getDb()
+    const row = await db.get<{ count: bigint | number }>(sql`
+select count(*) as count
+from target_embeddings
+where model = ${input.model}
+  and dimensions = ${input.dimensions}
+`)
+    return Number(row?.count ?? 0)
+}
+
 async function loadDurableVectorPage(
     input: VectorIndexGroup,
-    cursor?: Pick<VectorIndexRow, 'target_id' | 'target_type'>,
+    cursor: VectorIndexCursor | undefined,
+    limit: number,
 ): Promise<VectorEmbeddingRow[]> {
     const db = await getDb()
     return await db.all<VectorEmbeddingRow>(sql`
@@ -577,13 +612,14 @@ where model = ${input.model}
   and dimensions = ${input.dimensions}
   ${vectorPageCursor(cursor)}
 order by target_type, target_id
-limit ${SQLITE_BIND_CHUNK_SIZE}
+limit ${limit}
 `)
 }
 
 async function loadVectorIndexEntryPage(
     input: VectorIndexGroup,
-    cursor?: Pick<VectorIndexRow, 'target_id' | 'target_type'>,
+    cursor: VectorIndexCursor | undefined,
+    limit: number,
 ): Promise<VectorIndexRow[]> {
     const db = await getDb()
     return await db.all<VectorIndexRow>(sql`
@@ -596,7 +632,7 @@ where model = ${input.model}
   and dimensions = ${input.dimensions}
   ${vectorPageCursor(cursor)}
 order by target_type, target_id
-limit ${SQLITE_BIND_CHUNK_SIZE}
+limit ${limit}
 `)
 }
 
@@ -604,7 +640,8 @@ function loadNativeVectorPage(
     database: DatabaseSync,
     tableName: string,
     input: VectorIndexGroup,
-    cursor?: Pick<VectorIndexRow, 'target_id' | 'target_type'>,
+    cursor: VectorIndexCursor | undefined,
+    limit: number,
 ): VectorIndexRow[] {
     const values: unknown[] = [input.model]
     const cursorCondition = cursor
@@ -620,7 +657,7 @@ function loadNativeVectorPage(
     if (cursor) {
         values.push(cursor.target_type, cursor.target_type, cursor.target_id)
     }
-    values.push(SQLITE_BIND_CHUNK_SIZE)
+    values.push(limit)
 
     return withStatement(
         database,
@@ -638,9 +675,7 @@ limit ?
     )
 }
 
-function vectorPageCursor(
-    cursor?: Pick<VectorIndexRow, 'target_id' | 'target_type'>,
-) {
+function vectorPageCursor(cursor: VectorIndexCursor | undefined) {
     return cursor
         ? sql`and (
                 target_type > ${cursor.target_type}
@@ -678,13 +713,11 @@ async function exactVectorSearch(input: {
     }
 
     const results: VectorSearchResult[] = []
-    let cursor:
-        | Pick<VectorEmbeddingRow, 'target_id' | 'target_type'>
-        | undefined
+    const batchSize = vectorStreamBatchSize(input)
+    let cursor: VectorIndexCursor | undefined
 
     while (true) {
-        const rows = await loadDurableVectorPage(input, cursor)
-
+        const rows = await loadDurableVectorPage(input, cursor, batchSize)
         for (const row of rows) {
             results.push({
                 distance: cosineDistance(
@@ -701,8 +734,7 @@ async function exactVectorSearch(input: {
                 results.pop()
             }
         }
-
-        if (rows.length < SQLITE_BIND_CHUNK_SIZE) {
+        if (rows.length < batchSize) {
             return results
         }
         cursor = rows.at(-1)
@@ -769,12 +801,26 @@ function safeVectorTableName(tableName: string): boolean {
     return /^vector_index_\d+$/u.test(tableName)
 }
 
+function vectorStreamBatchSize(
+    input: VectorIndexGroup,
+    totalVectors?: number,
+): number {
+    return (
+        adaptiveBatchSize({
+            estimatedItemBytes:
+                input.dimensions * Float32Array.BYTES_PER_ELEMENT +
+                VECTOR_ROW_OVERHEAD_BYTES,
+            totalItems: totalVectors,
+        }) || 500
+    )
+}
+
 async function upsertVectorIndexEntries(
     targets: VectorIndexTarget[],
     indexTable: string,
 ): Promise<void> {
     const db = await getDb()
-    for (const targetChunk of chunks(targets)) {
+    for (const targetChunk of chunks(targets, SQLITE_INSERT_BIND_BATCH_SIZE)) {
         await db
             .insert(vectorIndexEntries)
             .values(
@@ -815,7 +861,10 @@ async function deleteVectorIndexEntries(
     const db = await getDb()
 
     if (targetIds && targetIds.length > 0) {
-        for (const targetIdChunk of chunks(targetIds)) {
+        for (const targetIdChunk of chunks(
+            targetIds,
+            SQLITE_DELETE_BIND_BATCH_SIZE,
+        )) {
             await db
                 .delete(vectorIndexEntries)
                 .where(
@@ -887,10 +936,10 @@ function groupTargetsByDimensions(
     return grouped
 }
 
-function chunks<T>(items: T[]): T[][] {
+function chunks<T>(items: T[], size: number): T[][] {
     const result: T[][] = []
-    for (let index = 0; index < items.length; index += SQLITE_BIND_CHUNK_SIZE) {
-        result.push(items.slice(index, index + SQLITE_BIND_CHUNK_SIZE))
+    for (let index = 0; index < items.length; index += size) {
+        result.push(items.slice(index, index + size))
     }
     return result
 }
