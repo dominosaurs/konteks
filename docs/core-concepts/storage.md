@@ -2,7 +2,7 @@
 
 Konteks memory lives with the project. Storage is the quiet layer that keeps extracted knowledge, saved observations, diary entries, and retrieval text available across agent sessions.
 
-The storage model has one central promise: project memory should be local, portable, and rebuildable where possible.
+The storage model has one central promise: project memory should be local, portable, and rebuild-able where possible.
 
 ```mermaid
 graph LR
@@ -59,17 +59,9 @@ Those projections include:
 
 This is why search and recall can continue to work even when one retrieval path is incomplete. The storage layer keeps multiple doors into the same memory.
 
-Semantic vectors are guarded by the retrieval text hash. The durable vector
-blob lives in `target_embeddings`; sqlite-vec rows are tracked separately in
-`vector_index_entries` and copied into `.konteks/vectors.sqlite`. The
-acceleration index can be rebuilt from the durable blob. If text changes, old
-vectors are not used for scoring; changed extraction repairs missing or stale
-vectors without rebuilding unchanged sections or calling the embedding provider
-again when the stored blob is still fresh.
+Semantic vectors are guarded by the retrieval text hash. The durable vector blob lives in `target_embeddings`; sqlite-vec rows are tracked separately in `vector_index_entries` and copied into `.konteks/vectors.sqlite`. The acceleration index can be rebuilt from the durable blob. If text changes, old vectors are not used for scoring; changed extraction repairs missing or stale vectors for changed sections and modules without rebuilding unrelated retrieval documents. Corpus-wide embedding generation and sqlite-vec repair run during `konteks init` and `konteks rebuild`, keeping automatic warm-up and save refresh work proportional to changed files.
 
-Konteks loads sqlite-vec through Bun's SQLite extension loader when available,
-then falls back to Node's built-in SQLite loader. If neither runtime can load the
-native extension, indexing reports an actionable dependency error.
+Konteks loads sqlite-vec through Bun's SQLite extension loader when available, then falls back to Node's built-in SQLite loader. If neither runtime can load the native extension, indexing reports an actionable dependency error.
 
 ## 5. The Seal: Manifest and Summary
 

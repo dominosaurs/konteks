@@ -37,7 +37,7 @@ export default class HuggingFaceEmbeddingProvider
                 normalize: true,
                 pooling: 'mean',
             })
-            vectors.push(toFloat32Array(output))
+            vectors.push(toOwnedFloat32Array(output))
         }
 
         return vectors
@@ -254,4 +254,24 @@ function toFloat32Array(value: unknown): Float32Array {
     }
 
     throw new Error('Unsupported embedding output format from provider.')
+}
+
+export function toOwnedFloat32Array(value: unknown): Float32Array {
+    try {
+        return toFloat32Array(value).slice()
+    } finally {
+        disposeOutput(value)
+    }
+}
+
+function disposeOutput(value: unknown): void {
+    if (
+        typeof value === 'object' &&
+        value !== null &&
+        'dispose' in value &&
+        typeof (value as { dispose: unknown }).dispose === 'function'
+    ) {
+        const disposable = value as { dispose(): void }
+        disposable.dispose()
+    }
 }

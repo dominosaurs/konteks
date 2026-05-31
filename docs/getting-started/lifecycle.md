@@ -22,6 +22,8 @@ When you open a fresh coding agent session in a project, start by giving it the 
 
 Use the `/konteks-warm-up` prompt to start this phase. This ensures the agent is familiar with the project without you manually explaining architecture, constraints, and durable decisions.
 
+Warm up refreshes changed files incrementally. Run `konteks rebuild` when you need a corpus-wide embedding or vector-index repair pass.
+
 ```text
 /konteks-warm-up
 ```

@@ -83,8 +83,8 @@ describe('vector index', () => {
         ).resolves.toEqual([])
     })
 
-    it('keeps repaired vectors fresh on a second changed extraction', async () => {
-        await makeTempProject(300)
+    it('leaves corpus vector repair to explicit extraction jobs', async () => {
+        await makeTempProject(30)
         const context = await loadProjectContext()
 
         await extractProject(context, 'full', {
@@ -93,17 +93,12 @@ describe('vector index', () => {
         const db = await getDb()
         await db.delete(vectorIndexEntries)
 
-        const repaired = await extractProject(context, 'changed', {
-            embeddingProvider: new ThrowingReuseEmbeddingProvider(),
-        })
-        const stable = await extractProject(context, 'changed', {
+        const unchanged = await extractProject(context, 'changed', {
             embeddingProvider: new ThrowingReuseEmbeddingProvider(),
         })
 
-        expect(repaired.embeddedCount).toBe(0)
-        expect(repaired.embeddingReusedCount).toBeGreaterThan(0)
-        expect(stable.embeddedCount).toBe(0)
-        expect(stable.embeddingReusedCount).toBe(repaired.embeddingReusedCount)
+        expect(unchanged.embeddedCount).toBe(0)
+        expect(unchanged.embeddingReusedCount).toBe(0)
     }, 30000)
 
     it('keeps exact fallback search bounded across durable vector pages', async () => {

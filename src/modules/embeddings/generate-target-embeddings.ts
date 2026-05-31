@@ -1,4 +1,4 @@
-import { and, eq, or, sql } from 'drizzle-orm'
+import { and, eq, inArray, or, sql } from 'drizzle-orm'
 import getDb from '@/database/actions/_db'
 import { retrievalDocuments, targetEmbeddings } from '@/database/schema'
 import {
@@ -120,6 +120,39 @@ export async function generateEmbeddingsForTargets(
         )
     }
     return finishEmbeddingRun(state, options)
+}
+
+export async function generateEmbeddingsForUpdatedTargets(
+    provider: EmbeddingProviderContract,
+    targetTypes: TargetType[],
+    updatedAt: string,
+    options: {
+        onProgress?: ExtractionProgressReporter
+    } = {},
+): Promise<EmbeddingRunResult> {
+    if (targetTypes.length === 0) {
+        return { embeddedCount: 0, reusedCount: 0 }
+    }
+
+    const db = await getDb()
+    const targets = await db
+        .select({
+            targetId: retrievalDocuments.targetId,
+            targetType: retrievalDocuments.targetType,
+        })
+        .from(retrievalDocuments)
+        .where(
+            and(
+                eq(retrievalDocuments.updatedAt, updatedAt),
+                inArray(retrievalDocuments.targetType, targetTypes),
+            ),
+        )
+    return await generateEmbeddingsForTargets(
+        provider,
+        targets,
+        updatedAt,
+        options,
+    )
 }
 
 async function embedRetrievalDocumentRows(
