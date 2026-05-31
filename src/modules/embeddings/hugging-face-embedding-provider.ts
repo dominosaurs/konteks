@@ -6,6 +6,7 @@ import { mkdir } from '@/support/file-manager'
 import { formatBytes } from '@/support/format/number'
 import type { EmbeddingProviderContract } from '@/types/embedding-provider'
 import type { ExtractionProgressReporter } from '@/types/progress'
+import toOwnedEmbeddingVector from './to-owned-embedding-vector'
 export default class HuggingFaceEmbeddingProvider
     implements EmbeddingProviderContract
 {
@@ -37,7 +38,7 @@ export default class HuggingFaceEmbeddingProvider
                 normalize: true,
                 pooling: 'mean',
             })
-            vectors.push(toOwnedFloat32Array(output))
+            vectors.push(toOwnedEmbeddingVector(output))
         }
 
         return vectors
@@ -234,44 +235,4 @@ async function estimateCacheSize(path: string): Promise<number> {
 
 function formatPercent(value: number): string {
     return `${Math.max(0, Math.min(100, value)).toFixed(1)}%`
-}
-
-function toFloat32Array(value: unknown): Float32Array {
-    if (
-        typeof value === 'object' &&
-        value !== null &&
-        'data' in value &&
-        (value as { data: unknown }).data instanceof Float32Array
-    ) {
-        return (value as { data: Float32Array }).data
-    }
-
-    if (Array.isArray(value)) {
-        const numeric = value
-            .flat(Infinity)
-            .filter(item => typeof item === 'number') as number[]
-        return Float32Array.from(numeric)
-    }
-
-    throw new Error('Unsupported embedding output format from provider.')
-}
-
-function toOwnedFloat32Array(value: unknown): Float32Array {
-    try {
-        return toFloat32Array(value).slice()
-    } finally {
-        disposeOutput(value)
-    }
-}
-
-function disposeOutput(value: unknown): void {
-    if (
-        typeof value === 'object' &&
-        value !== null &&
-        'dispose' in value &&
-        typeof (value as { dispose: unknown }).dispose === 'function'
-    ) {
-        const disposable = value as { dispose(): void }
-        disposable.dispose()
-    }
 }
