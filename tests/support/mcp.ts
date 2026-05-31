@@ -129,6 +129,7 @@ function commandEnv(): Record<string, string> {
                     typeof entry[1] === 'string',
             ),
         ),
+        KONTEKS_DISABLE_SHARED_EMBEDDING_PROVIDER: '1',
         KONTEKS_SQLITE_TEST_DATABASE: 'file',
     }
 }
