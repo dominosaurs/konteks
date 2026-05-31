@@ -2,7 +2,6 @@ import {
     extractProjectSectionsWithDatabase,
     readExtractedProjectPaths,
 } from '@/database/services/project-extraction'
-import generateTargetEmbeddings from '@/modules/embeddings/generate-target-embeddings'
 import extractProjectMetadata from '@/modules/extraction/engine/extract-project-metadata'
 import type { ScannedFile } from '@/modules/extraction/engine/file-scan'
 import { scanProjectFilesWithDiagnostics } from '@/modules/extraction/engine/file-scan'
@@ -108,19 +107,10 @@ export class KonteksExtractionEngine implements ExtractionEngineContract {
             filesToExtract.length === 0 &&
             deletedPaths.length === 0
         ) {
-            const repairedEmbeddings = options.embeddingProvider
-                ? await generateTargetEmbeddings(
-                      options.embeddingProvider,
-                      ['section', 'module', 'memory', 'diary'],
-                      new Date().toISOString(),
-                      { onProgress: progress },
-                  )
-                : { embeddedCount: 0, reusedCount: 0 }
-
             return unchangedExtractionResponse({
                 detectedParserLanguages,
-                embeddedCount: repairedEmbeddings.embeddedCount,
-                embeddingReusedCount: repairedEmbeddings.reusedCount,
+                embeddedCount: 0,
+                embeddingReusedCount: 0,
                 files,
                 languageCount,
                 manifest: previousManifest,

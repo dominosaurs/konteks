@@ -1,7 +1,9 @@
 import { withTransaction } from '@/database/actions/_db'
 import countExtractedSections from '@/database/actions/count-extracted-sections'
 import readExtractedProjectPathsAction from '@/database/actions/read-extracted-project-paths'
-import generateTargetEmbeddings from '@/modules/embeddings/generate-target-embeddings'
+import generateTargetEmbeddings, {
+    generateEmbeddingsForUpdatedTargets,
+} from '@/modules/embeddings/generate-target-embeddings'
 import type { ProjectMetadata } from '@/modules/extraction/engine/extract-project-metadata'
 import extractSections from '@/modules/extraction/engine/extract-sections'
 import type { ScannedFile } from '@/modules/extraction/engine/file-scan'
@@ -64,12 +66,10 @@ export async function extractProjectSectionsWithDatabase(
         })
     }
     const embeddingRun = options.embeddingProvider
-        ? await generateTargetEmbeddings(
-              options.embeddingProvider,
-              ['section', 'module', 'memory', 'diary'],
-              options.extractedAt,
-              { onProgress: options.onProgress },
-          )
+        ? await generateProjectEmbeddings({
+              ...options,
+              embeddingProvider: options.embeddingProvider,
+          })
         : { embeddedCount: 0, reusedCount: 0 }
 
     return {
@@ -78,4 +78,26 @@ export async function extractProjectSectionsWithDatabase(
         extractedSections,
         totalSectionCount,
     }
+}
+
+async function generateProjectEmbeddings(
+    options: ExtractProjectSectionsOptions & {
+        embeddingProvider: EmbeddingProvider
+    },
+) {
+    if (options.mode === 'changed') {
+        return await generateEmbeddingsForUpdatedTargets(
+            options.embeddingProvider,
+            ['section', 'module'],
+            options.extractedAt,
+            { onProgress: options.onProgress },
+        )
+    }
+
+    return await generateTargetEmbeddings(
+        options.embeddingProvider,
+        ['section', 'module', 'memory', 'diary'],
+        options.extractedAt,
+        { onProgress: options.onProgress },
+    )
 }

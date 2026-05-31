@@ -44,6 +44,15 @@ class ThrowingReuseEmbeddingProvider implements EmbeddingProviderContract {
     }
 }
 
+class CountingEmbeddingProvider extends FakeEmbeddingProvider {
+    public embeddedTexts: string[] = []
+
+    public override async embed(texts: string[]): Promise<Float32Array[]> {
+        this.embeddedTexts.push(...texts)
+        return await super.embed(texts)
+    }
+}
+
 async function extractTestProject(
     context: Awaited<ReturnType<typeof loadProjectContext>>,
     mode: Parameters<typeof extractProject>[1],
@@ -387,7 +396,7 @@ describe('extractProject', () => {
         expect(await projectStateCounts()).toEqual(beforeCounts)
     })
 
-    it('reuses stored embeddings when changed mode repairs missing vector index metadata', async () => {
+    it('does not run corpus vector repair when changed mode is already current', async () => {
         const projectRoot = await makeTempProject()
         const context = await withProjectRoot(projectRoot, () =>
             loadProjectContext(),
@@ -410,8 +419,41 @@ describe('extractProject', () => {
             ok: true,
             updatedFilePaths: [],
         })
-        expect(result.embeddingReusedCount).toBeGreaterThan(0)
+        expect(result.embeddingReusedCount).toBe(0)
         expect(result.embeddedCount).toBe(0)
+    })
+
+    it('embeds only retrieval documents updated by changed extraction', async () => {
+        const projectRoot = await makeTempProject()
+        const context = await withProjectRoot(projectRoot, () =>
+            loadProjectContext(),
+        )
+
+        await extractTestProject(context, 'rebuild', {
+            embeddingProvider: new FakeEmbeddingProvider(),
+        })
+        await writeFile(
+            join(projectRoot, 'src', 'new.txt'),
+            'Changed extraction should embed this new file only.\n',
+        )
+        const provider = new CountingEmbeddingProvider()
+
+        const result = await extractTestProject(context, 'changed', {
+            embeddingProvider: provider,
+        })
+
+        expect(result.updatedFilePaths).toEqual(['src/new.txt'])
+        expect(provider.embeddedTexts.length).toBeGreaterThan(0)
+        expect(
+            provider.embeddedTexts.some(text =>
+                text.includes(
+                    'Changed extraction should embed this new file only.',
+                ),
+            ),
+        ).toBe(true)
+        expect(
+            provider.embeddedTexts.some(text => text.includes('# Fixture')),
+        ).toBe(false)
     })
 
     it('extracts repeated anchors with identical content without section ID collisions', async () => {

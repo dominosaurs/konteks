@@ -18,7 +18,10 @@ export async function saveMemories(
 ): Promise<SaveResult> {
     const context = await loadMcpProjectContext()
     const embeddingProvider = sharedEmbeddingProvider()
-    const projectUpdate = await updateChangedProjectMemorySilently(context)
+    const projectUpdate = await updateChangedProjectMemorySilently(
+        context,
+        embeddingProvider,
+    )
     return await saveKonteksMemories(context, input, {
         embeddingProvider,
         projectUpdate,
@@ -28,7 +31,10 @@ export async function saveMemories(
 export async function saveDiary(input: SaveDiaryInput): Promise<SaveResult> {
     const context = await loadMcpProjectContext()
     const embeddingProvider = sharedEmbeddingProvider()
-    const projectUpdate = await updateChangedProjectMemorySilently(context)
+    const projectUpdate = await updateChangedProjectMemorySilently(
+        context,
+        embeddingProvider,
+    )
     return await saveKonteksDiary(context, input, {
         embeddingProvider,
         projectUpdate,
