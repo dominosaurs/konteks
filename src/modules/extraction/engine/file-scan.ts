@@ -24,6 +24,7 @@ export type ScanDiagnostics = {
         konteksignore: number
         lockfile: number
         minified: number
+        oversized: number
         secret: number
         vcsIgnore: number
     }
@@ -37,6 +38,8 @@ type ScanProjectResult = {
 type ScanProjectOptions = {
     previousFiles?: ScannedFile[]
 }
+
+const MAX_EXTRACTED_FILE_SIZE_BYTES = 10 * 1024 * 1024
 
 export async function scanProjectFiles(
     projectRoot: string,
@@ -142,6 +145,10 @@ async function scanDirectory(
 
         diagnostics.filesScanned += 1
         const fileStat = await stat(absolutePath)
+        if (fileStat.size > MAX_EXTRACTED_FILE_SIZE_BYTES) {
+            diagnostics.filesSkipped.oversized += 1
+            continue
+        }
         const previous = previousByPath.get(relativePath)
         if (
             previous &&
@@ -180,6 +187,7 @@ function createScanDiagnostics(): ScanDiagnostics {
             konteksignore: 0,
             lockfile: 0,
             minified: 0,
+            oversized: 0,
             secret: 0,
             vcsIgnore: 0,
         },
