@@ -34,6 +34,7 @@ Before anything becomes memory, it passes through a gate. Konteks excludes its o
 * Git and Konteks internal directories.
 * Environment, certificate, and key files.
 * Binary, generated, minified, vendored, and lockfile paths.
+* Files larger than 10 MiB.
 
 What remains is the working set. Project-specific unusually large files or other repository noise should be excluded by the repository's `.gitignore` or `.konteksignore`.
 

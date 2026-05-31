@@ -10,6 +10,7 @@ import {
 import { mkdir, rm } from '@/support/file-manager'
 
 const tempDirs: string[] = []
+const maxExtractedFileSizeBytes = 10 * 1024 * 1024
 
 async function makeProject(): Promise<string> {
     const projectRoot = await mkdtemp(join(tmpdir(), 'konteks-scan-test-'))
@@ -54,17 +55,26 @@ describe('scanProjectFiles', () => {
         expect(scan.diagnostics.filesSkipped.konteksignore).toBe(1)
     })
 
-    it('does not skip files by size', async () => {
+    it('skips oversized files before they enter extraction', async () => {
         const projectRoot = await makeProject()
         await writeFile(join(projectRoot, 'README.md'), '# Fixture\n')
-        await writeFile(join(projectRoot, 'huge.txt'), 'x'.repeat(20))
+        await writeFile(
+            join(projectRoot, 'limit.txt'),
+            'x'.repeat(maxExtractedFileSizeBytes),
+        )
+        await writeFile(
+            join(projectRoot, 'huge.txt'),
+            'x'.repeat(maxExtractedFileSizeBytes + 1),
+        )
 
-        const files = await scanProjectFiles(projectRoot)
+        const scan = await scanProjectFilesWithDiagnostics(projectRoot)
 
-        expect(files.map(file => file.path)).toEqual([
+        expect(scan.files.map(file => file.path)).toEqual([
             'README.md',
-            'huge.txt',
+            'limit.txt',
             'package.json',
         ])
+        expect(scan.diagnostics.filesSkipped.oversized).toBe(1)
+        await expect(scanProjectFiles(projectRoot)).resolves.toHaveLength(3)
     })
 })

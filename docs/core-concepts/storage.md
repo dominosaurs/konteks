@@ -44,7 +44,7 @@ Structured storage is the ledger. It gives Konteks a reliable way to count memor
 
 Accepted extracted sections, saved observations, and diary metadata are stored directly in SQLite.
 
-The storage layer does not spill large text into separate object files. Konteks has fail-safe ignores for common binary, generated, minified, vendored, and lockfile paths; project-specific unusually large files or other repository noise should be excluded with `.gitignore` or `.konteksignore`.
+The storage layer does not spill large text into separate object files. Konteks has fail-safe ignores for common binary, generated, minified, vendored, lockfile, and over-10 MiB paths; project-specific unusually large files or other repository noise should be excluded with `.gitignore` or `.konteksignore`.
 
 ## 4. The Index: Retrieval Surfaces
 
