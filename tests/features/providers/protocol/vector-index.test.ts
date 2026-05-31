@@ -4,12 +4,17 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { eq } from 'drizzle-orm'
 import getDb from '@/database/actions/_db'
-import { targetEmbeddings, vectorIndexEntries } from '@/database/schema'
+import {
+    retrievalDocuments,
+    targetEmbeddings,
+    vectorIndexEntries,
+} from '@/database/schema'
 import {
     deleteVectorIndexTargets,
     searchVectorIndex,
     upsertVectorIndexTargets,
 } from '@/database/services/vector-index'
+import generateTargetEmbeddings from '@/modules/embeddings/generate-target-embeddings'
 import { extractProject } from '@/modules/extraction/extract-project'
 import { loadProjectContext } from '@/modules/project/context'
 import { mkdir, rm } from '@/support/file-manager'
@@ -118,7 +123,7 @@ describe('vector index', () => {
         expect(unchanged.embeddingReusedCount).toBe(0)
     }, 30000)
 
-    it('keeps exact fallback search bounded across durable vector pages', async () => {
+    it('searches the full durable vector set during exact fallback', async () => {
         await makeTempProject()
         const db = await getDb()
         const createdAt = new Date().toISOString()
@@ -152,14 +157,14 @@ describe('vector index', () => {
         await makeTempProject()
         const db = await getDb()
         const createdAt = new Date().toISOString()
-        const targets = Array.from({ length: 2 }, (_, index) => ({
+        const targets = Array.from({ length: 300 }, (_, index) => ({
             createdAt,
             dimensions: 4,
             embeddingHash: `repair-hash-${index}`,
             model: 'fake/repair',
             targetId: `section-${index}`,
             targetType: 'section' as const,
-            vector: new Float32Array([index, 1, 0, 0]),
+            vector: new Float32Array([index === 299 ? 1 : 0, 1, 0, 0]),
         }))
         await db.insert(targetEmbeddings).values(
             targets.map(target => ({
@@ -177,7 +182,7 @@ describe('vector index', () => {
         await upsertVectorIndexTargets(targets)
         await db
             .delete(vectorIndexEntries)
-            .where(eq(vectorIndexEntries.targetId, 'section-1'))
+            .where(eq(vectorIndexEntries.targetId, 'section-299'))
 
         await expect(
             searchVectorIndex({
@@ -186,14 +191,52 @@ describe('vector index', () => {
                 model: 'fake/repair',
                 vector: new Float32Array([1, 1, 0, 0]),
             }),
-        ).resolves.toMatchObject([{ targetId: 'section-1' }])
+        ).resolves.toMatchObject([{ targetId: 'section-299' }])
 
         await waitForVectorIndexRepairs()
         const repairedEntries = await db
             .select()
             .from(vectorIndexEntries)
             .where(eq(vectorIndexEntries.model, 'fake/repair'))
-        expect(repairedEntries).toHaveLength(2)
+        expect(repairedEntries).toHaveLength(300)
+    })
+
+    it('embeds retrieval documents past the removed 250 row batch boundary', async () => {
+        await makeTempProject()
+        const db = await getDb()
+        const updatedAt = new Date().toISOString()
+        await db.insert(retrievalDocuments).values(
+            Array.from({ length: 300 }, (_, index) => ({
+                embeddingHash: `document-hash-${index}`,
+                embeddingText: `document text ${index}`,
+                ftsHash: `fts-hash-${index}`,
+                ftsText: `document text ${index}`,
+                path: `src/document-${index}.txt`,
+                targetId: `section-${index.toString().padStart(3, '0')}`,
+                targetType: 'section' as const,
+                updatedAt,
+            })),
+        )
+
+        const result = await generateTargetEmbeddings(
+            new FakeEmbeddingProvider(),
+            ['section'],
+            updatedAt,
+        )
+
+        expect(result).toEqual({ embeddedCount: 300, reusedCount: 0 })
+        expect(
+            await db
+                .select()
+                .from(targetEmbeddings)
+                .where(eq(targetEmbeddings.targetType, 'section')),
+        ).toHaveLength(300)
+        expect(
+            await db
+                .select()
+                .from(vectorIndexEntries)
+                .where(eq(vectorIndexEntries.targetType, 'section')),
+        ).toHaveLength(300)
     })
 
     it('repairs vector metadata hash mismatches with equal row counts', async () => {
