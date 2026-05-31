@@ -72,22 +72,16 @@ type VectorEmbeddingRow = {
     vector_blob: ArrayBuffer | Uint8Array
 }
 
-type VectorIndexDeletion = {
-    targetIds?: string[]
-    targetType: TargetType
-}
-
 declare global {
     var __konteksVectorIndexConnectionFactoryForTests:
         | VectorIndexConnectionFactory
         | undefined
 }
 
-const connections = new Map<string, VectorIndexConnection>()
-const pendingDeletions = new Map<string, VectorIndexDeletion[]>()
 const BUN_SQLITE_MODULE = 'bun:sqlite'
 const NODE_SQLITE_MODULE = 'node:sqlite'
 const SQLITE_BIND_CHUNK_SIZE = 250
+let activeConnection: VectorIndexConnection | undefined
 let bunSqlitePromise: Promise<BunSqliteModule | undefined> | undefined
 let nodeSqlitePromise: Promise<NodeSqliteModule | undefined> | undefined
 
@@ -109,9 +103,6 @@ export async function upsertVectorIndexTargets(
     if (!connection) {
         return false
     }
-    flushPendingDeletions(connection)
-
-    const indexTables = new Map<string, string>()
     for (const [dimensions, groupedTargets] of groupTargetsByDimensions(
         targets,
     )) {
@@ -133,30 +124,31 @@ insert into ${vecTable} (
 ) values (?, ?, ?, ?, ?)
 `)
         try {
-            withNativeTransaction(connection.database, () => {
-                for (const target of groupedTargets) {
-                    deleteStatement.run(
-                        target.targetId,
-                        target.targetType,
-                        target.model,
-                    )
-                    insertStatement.run(
-                        vectorToBlob(target.vector),
-                        target.targetId,
-                        target.targetType,
-                        target.model,
-                        target.embeddingHash,
-                    )
-                    indexTables.set(targetKey(target), vecTable)
-                }
-            })
+            for (const targetChunk of chunks(groupedTargets)) {
+                withNativeTransaction(connection.database, () => {
+                    for (const target of targetChunk) {
+                        deleteStatement.run(
+                            target.targetId,
+                            target.targetType,
+                            target.model,
+                        )
+                        insertStatement.run(
+                            vectorToBlob(target.vector),
+                            target.targetId,
+                            target.targetType,
+                            target.model,
+                            target.embeddingHash,
+                        )
+                    }
+                })
+                await upsertVectorIndexEntries(targetChunk, vecTable)
+            }
         } finally {
             deleteStatement.finalize?.()
             insertStatement.finalize?.()
         }
     }
 
-    await upsertVectorIndexEntries(targets, indexTables)
     return true
 }
 
@@ -169,8 +161,6 @@ export async function reconcileVectorIndexGroup(input: {
     if (!connection) {
         return false
     }
-    flushPendingDeletions(connection)
-
     const tableName = tableNameForDimensions(input.dimensions)
     if (!hasVectorTable(connection.database, tableName)) {
         if (metadataCount > 0) {
@@ -210,15 +200,22 @@ export async function deleteVectorIndexTargets(
     }
 
     await deleteVectorIndexEntries(targetType, targetIds)
-    const context = await loadProjectContext()
-    const path = vectorDatabasePath(context)
-    const deletions = pendingDeletions.get(path) ?? []
-    deletions.push({ targetIds, targetType })
-    pendingDeletions.set(path, deletions)
     const connection = await vectorConnection()
-    if (connection) {
-        flushPendingDeletions(connection)
+    if (!connection) {
+        return
     }
+
+    const tables = vectorTableNames(connection.database)
+    withNativeTransaction(connection.database, () => {
+        for (const table of tables) {
+            deleteNativeVectorTargets(
+                connection.database,
+                table,
+                targetType,
+                targetIds,
+            )
+        }
+    })
 }
 
 export async function searchVectorIndex(input: {
@@ -308,47 +305,33 @@ where type = 'table'
     )
 }
 
-function flushPendingDeletions(connection: VectorIndexConnection): void {
-    const deletions = pendingDeletions.get(connection.path)
-    if (!deletions || deletions.length === 0) {
-        return
-    }
-
-    const tables = vectorTableNames(connection.database)
-    withNativeTransaction(connection.database, () => {
-        for (const deletion of deletions) {
-            for (const table of tables) {
-                if (deletion.targetIds && deletion.targetIds.length > 0) {
-                    for (const targetIdChunk of chunks(deletion.targetIds)) {
-                        const placeholders = targetIdChunk
-                            .map(() => '?')
-                            .join(', ')
-                        withStatement(
-                            connection.database,
-                            `
+function deleteNativeVectorTargets(
+    database: DatabaseSync,
+    table: string,
+    targetType: TargetType,
+    targetIds?: string[],
+): void {
+    if (targetIds && targetIds.length > 0) {
+        for (const targetIdChunk of chunks(targetIds)) {
+            const placeholders = targetIdChunk.map(() => '?').join(', ')
+            withStatement(
+                database,
+                `
 delete from ${table}
 where target_type = ?
   and target_id in (${placeholders})
 `,
-                            statement =>
-                                statement.run(
-                                    deletion.targetType,
-                                    ...targetIdChunk,
-                                ),
-                        )
-                    }
-                    continue
-                }
-
-                withStatement(
-                    connection.database,
-                    `delete from ${table} where target_type = ?`,
-                    statement => statement.run(deletion.targetType),
-                )
-            }
+                statement => statement.run(targetType, ...targetIdChunk),
+            )
         }
-    })
-    pendingDeletions.delete(connection.path)
+        return
+    }
+
+    withStatement(
+        database,
+        `delete from ${table} where target_type = ?`,
+        statement => statement.run(targetType),
+    )
 }
 
 async function vectorConnection(): Promise<VectorIndexConnection | undefined> {
@@ -362,14 +345,17 @@ async function vectorConnection(): Promise<VectorIndexConnection | undefined> {
 
     const context = await loadProjectContext()
     const path = vectorDatabasePath(context)
-    const existing = connections.get(path)
-    if (existing) {
-        return existing
+    if (activeConnection?.path === path) {
+        return activeConnection
+    }
+    if (activeConnection) {
+        activeConnection.database.close?.()
+        activeConnection = undefined
     }
 
     const database = await openVectorDatabase(path)
     const connection = { database, path }
-    connections.set(path, connection)
+    activeConnection = connection
     return connection
 }
 
@@ -442,8 +428,18 @@ async function exactVectorSearch(input: {
     model: string
     vector: Float32Array
 }): Promise<VectorSearchResult[]> {
+    if (input.limit <= 0) {
+        return []
+    }
+
     const db = await getDb()
-    const rows = await db.all<VectorEmbeddingRow>(sql`
+    const results: VectorSearchResult[] = []
+    let cursor:
+        | Pick<VectorEmbeddingRow, 'target_id' | 'target_type'>
+        | undefined
+
+    while (true) {
+        const rows = await db.all<VectorEmbeddingRow>(sql`
 select
     embedding_hash,
     model,
@@ -453,21 +449,43 @@ select
 from target_embeddings
 where model = ${input.model}
   and dimensions = ${input.dimensions}
+  ${
+      cursor
+          ? sql`and (
+                target_type > ${cursor.target_type}
+                or (
+                    target_type = ${cursor.target_type}
+                    and target_id > ${cursor.target_id}
+                )
+            )`
+          : sql``
+}
+order by target_type, target_id
+limit ${SQLITE_BIND_CHUNK_SIZE}
 `)
 
-    return rows
-        .map(row => ({
-            distance: cosineDistance(
-                input.vector,
-                blobToFloat32Array(row.vector_blob),
-            ),
-            embeddingHash: row.embedding_hash,
-            model: row.model,
-            targetId: row.target_id,
-            targetType: row.target_type,
-        }))
-        .sort((left, right) => left.distance - right.distance)
-        .slice(0, input.limit)
+        for (const row of rows) {
+            results.push({
+                distance: cosineDistance(
+                    input.vector,
+                    blobToFloat32Array(row.vector_blob),
+                ),
+                embeddingHash: row.embedding_hash,
+                model: row.model,
+                targetId: row.target_id,
+                targetType: row.target_type,
+            })
+            results.sort((left, right) => left.distance - right.distance)
+            if (results.length > input.limit) {
+                results.pop()
+            }
+        }
+
+        if (rows.length < SQLITE_BIND_CHUNK_SIZE) {
+            return results
+        }
+        cursor = rows.at(-1)
+    }
 }
 
 function cosineDistance(left: Float32Array, right: Float32Array): number {
@@ -532,7 +550,7 @@ function safeVectorTableName(tableName: string): boolean {
 
 async function upsertVectorIndexEntries(
     targets: VectorIndexTarget[],
-    indexTables: Map<string, string>,
+    indexTable: string,
 ): Promise<void> {
     const db = await getDb()
     for (const targetChunk of chunks(targets)) {
@@ -542,9 +560,7 @@ async function upsertVectorIndexEntries(
                 targetChunk.map(target => ({
                     dimensions: target.dimensions,
                     embeddingHash: target.embeddingHash,
-                    indexTable:
-                        indexTables.get(targetKey(target)) ??
-                        tableNameForDimensions(target.dimensions),
+                    indexTable,
                     model: target.model,
                     targetId: target.targetId,
                     targetType: target.targetType,
@@ -675,10 +691,4 @@ function chunks<T>(items: T[]): T[][] {
 function rowCount(row: unknown): number {
     const count = (row as { count?: bigint | number } | undefined)?.count ?? 0
     return Number(count)
-}
-
-function targetKey(
-    target: Pick<VectorIndexTarget, 'model' | 'targetId' | 'targetType'>,
-): string {
-    return `${target.targetType}:${target.targetId}:${target.model}`
 }
