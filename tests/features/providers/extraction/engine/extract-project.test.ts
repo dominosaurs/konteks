@@ -195,6 +195,24 @@ describe('extractProject', () => {
         expect(manifest?.diagnostics?.filesTruncatedBySectionLimit).toBe(0)
     })
 
+    it('records oversized skipped files in manifest diagnostics', async () => {
+        const projectRoot = await makeTempProject()
+        await writeFile(
+            join(projectRoot, 'huge.txt'),
+            'x'.repeat(10 * 1024 * 1024 + 1),
+        )
+        const context = await withProjectRoot(projectRoot, () =>
+            loadProjectContext(),
+        )
+
+        const result = await extractTestProject(context, 'rebuild')
+        const manifest = await readExtractionManifest(context.memoryDir)
+
+        expect(result.fileCount).toBe(2)
+        expect(manifest?.files.map(file => file.path)).not.toContain('huge.txt')
+        expect(manifest?.diagnostics?.filesSkipped.oversized).toBe(1)
+    })
+
     it('stores the manifest as local JSON', async () => {
         const projectRoot = await makeTempProject()
         const context = await withProjectRoot(projectRoot, () =>
