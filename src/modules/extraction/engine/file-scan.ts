@@ -2,7 +2,7 @@ import { createHash } from 'node:crypto'
 import { readdir, readFile, stat } from 'node:fs/promises'
 import { join, relative, sep } from 'node:path'
 import createIgnoreMatcher, {
-    type IgnoreMatcher,
+    type GitignoreSource,
     type IgnoreReason,
 } from './create-ignore-matcher'
 
@@ -53,7 +53,9 @@ export async function scanProjectFilesWithDiagnostics(
     options: ScanProjectOptions = {},
 ): Promise<ScanProjectResult> {
     const files: ScannedFile[] = []
-    const ignoreMatcher = await loadIgnoreMatcher(projectRoot)
+    const konteksignore = await readOptionalText(
+        join(projectRoot, '.konteksignore'),
+    )
     const diagnostics = createScanDiagnostics()
     const previousByPath = new Map(
         (options.previousFiles ?? []).map(file => [file.path, file]),
@@ -63,9 +65,12 @@ export async function scanProjectFilesWithDiagnostics(
         projectRoot,
         projectRoot,
         files,
-        ignoreMatcher,
         diagnostics,
         previousByPath,
+        {
+            gitignoreSources: [],
+            konteksignore,
+        },
     )
 
     const sortedFiles = files.sort((left, right) =>
@@ -83,10 +88,30 @@ async function scanDirectory(
     projectRoot: string,
     directory: string,
     files: ScannedFile[],
-    ignoreMatcher: IgnoreMatcher,
     diagnostics: ScanDiagnostics,
     previousByPath: Map<string, ScannedFile>,
+    ignoreContext: {
+        gitignoreSources: GitignoreSource[]
+        konteksignore: string
+    },
 ): Promise<void> {
+    const directoryBasePath = toRelativeProjectPath(projectRoot, directory)
+    const directoryGitignore = await readOptionalText(
+        join(directory, '.gitignore'),
+    )
+    const gitignoreSources = directoryGitignore
+        ? [
+              ...ignoreContext.gitignoreSources,
+              {
+                  basePath: directoryBasePath,
+                  content: directoryGitignore,
+              },
+          ]
+        : ignoreContext.gitignoreSources
+    const ignoreMatcher = createIgnoreMatcher({
+        gitignore: gitignoreSources,
+        konteksignore: ignoreContext.konteksignore,
+    })
     const entries = await readdir(directory, { withFileTypes: true })
 
     for (const entry of entries) {
@@ -104,9 +129,12 @@ async function scanDirectory(
                 projectRoot,
                 absolutePath,
                 files,
-                ignoreMatcher,
                 diagnostics,
                 previousByPath,
+                {
+                    gitignoreSources,
+                    konteksignore: ignoreContext.konteksignore,
+                },
             )
             continue
         }
@@ -188,15 +216,6 @@ function skippedKeyFor(
     }
 
     return reason
-}
-
-async function loadIgnoreMatcher(projectRoot: string): Promise<IgnoreMatcher> {
-    const [gitignore, konteksignore] = await Promise.all([
-        readOptionalText(join(projectRoot, '.gitignore')),
-        readOptionalText(join(projectRoot, '.konteksignore')),
-    ])
-
-    return createIgnoreMatcher({ gitignore, konteksignore })
 }
 
 async function readOptionalText(path: string): Promise<string> {

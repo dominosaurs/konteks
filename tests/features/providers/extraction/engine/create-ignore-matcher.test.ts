@@ -146,6 +146,28 @@ describe('extraction ignore rules', () => {
         expect(matcher.ignores('src/index.ts')).toBe(false)
     })
 
+    it('scopes nested gitignore patterns to their directory', () => {
+        const matcher = createIgnoreMatcher({
+            gitignore: [
+                {
+                    basePath: '',
+                    content: '*.log\n',
+                },
+                {
+                    basePath: 'packages/app',
+                    content: '/private-output/\n!important.log\n',
+                },
+            ],
+        })
+
+        expect(matcher.ignores('packages/app/private-output/out.js')).toBe(true)
+        expect(matcher.ignores('packages/other/private-output/out.js')).toBe(
+            false,
+        )
+        expect(matcher.ignores('packages/app/important.log')).toBe(false)
+        expect(matcher.ignores('packages/other/important.log')).toBe(true)
+    })
+
     it('uses .konteksignore as extra exclusions only', () => {
         const matcher = createIgnoreMatcher({
             gitignore: 'ignored.md\n',
