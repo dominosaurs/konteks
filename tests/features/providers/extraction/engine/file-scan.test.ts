@@ -54,6 +54,47 @@ describe('scanProjectFiles', () => {
         expect(scan.diagnostics.filesSkipped.konteksignore).toBe(1)
     })
 
+    it('respects .gitignore files inside directories', async () => {
+        const projectRoot = await makeProject()
+        await mkdir(join(projectRoot, 'packages', 'app', 'private-output'))
+        await mkdir(join(projectRoot, 'packages', 'app', 'src'))
+        await mkdir(join(projectRoot, 'packages', 'other', 'private-output'))
+        await writeFile(join(projectRoot, '.gitignore'), '*.log\n')
+        await writeFile(
+            join(projectRoot, 'packages', 'app', '.gitignore'),
+            'private-output/\n!important.log\n',
+        )
+        await writeFile(
+            join(projectRoot, 'packages', 'app', 'private-output', 'out.js'),
+            'ignored\n',
+        )
+        await writeFile(
+            join(projectRoot, 'packages', 'app', 'src', 'index.ts'),
+            'export {}\n',
+        )
+        await writeFile(
+            join(projectRoot, 'packages', 'app', 'important.log'),
+            'included\n',
+        )
+        await writeFile(
+            join(projectRoot, 'packages', 'other', 'private-output', 'out.js'),
+            'included\n',
+        )
+        await writeFile(join(projectRoot, 'debug.log'), 'ignored\n')
+
+        const scan = await scanProjectFilesWithDiagnostics(projectRoot)
+
+        expect(scan.files.map(file => file.path)).toEqual([
+            '.gitignore',
+            'package.json',
+            'packages/app/.gitignore',
+            'packages/app/important.log',
+            'packages/app/src/index.ts',
+            'packages/other/private-output/out.js',
+        ])
+        expect(scan.diagnostics.filesSkipped.vcsIgnore).toBe(2)
+    })
+
     it('does not skip files by size', async () => {
         const projectRoot = await makeProject()
         await writeFile(join(projectRoot, 'README.md'), '# Fixture\n')

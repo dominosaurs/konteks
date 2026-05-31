@@ -17,10 +17,16 @@ export type IgnoreReason =
     | 'vcs_ignore'
 
 type IgnorePattern = {
+    basePath: string
     negated: boolean
     onlyDirectory: boolean
     pattern: string
     rootRelative: boolean
+}
+
+export type GitignoreSource = {
+    basePath: string
+    content: string
 }
 
 function getHardIgnoreReason(relativePath: string): IgnoreReason | undefined {
@@ -71,14 +77,19 @@ function getHardIgnoreReason(relativePath: string): IgnoreReason | undefined {
 }
 
 export default function createIgnoreMatcher(input: {
-    gitignore?: string
+    gitignore?: string | GitignoreSource[]
     konteksignore?: string
 }): IgnoreMatcher {
-    const gitignorePatterns = parseIgnoreFile(input.gitignore ?? '', {
-        allowNegation: true,
-    })
+    const gitignorePatterns = gitignoreSources(input.gitignore).flatMap(
+        source =>
+            parseIgnoreFile(source.content, {
+                allowNegation: true,
+                basePath: source.basePath,
+            }),
+    )
     const konteksignorePatterns = parseIgnoreFile(input.konteksignore ?? '', {
         allowNegation: false,
+        basePath: '',
     })
 
     return {
@@ -105,7 +116,7 @@ export default function createIgnoreMatcher(input: {
 
 function parseIgnoreFile(
     content: string,
-    options: { allowNegation: boolean },
+    options: { allowNegation: boolean; basePath: string },
 ): IgnorePattern[] {
     return content
         .split(/\r?\n/u)
@@ -118,6 +129,7 @@ function parseIgnoreFile(
             const pattern = rawPattern.replace(/^\/+/u, '').replace(/\/+$/u, '')
 
             return {
+                basePath: normalizeRelativePath(options.basePath),
                 negated,
                 onlyDirectory: rawPattern.endsWith('/'),
                 pattern,
@@ -125,6 +137,24 @@ function parseIgnoreFile(
             }
         })
         .filter(pattern => pattern.pattern.length > 0)
+}
+
+function gitignoreSources(
+    gitignore: string | GitignoreSource[] | undefined,
+): GitignoreSource[] {
+    if (Array.isArray(gitignore)) {
+        return gitignore.map(source => ({
+            basePath: normalizeRelativePath(source.basePath),
+            content: source.content,
+        }))
+    }
+
+    return [
+        {
+            basePath: '',
+            content: gitignore ?? '',
+        },
+    ]
 }
 
 function matchesPatterns(path: string, patterns: IgnorePattern[]): boolean {
@@ -141,21 +171,43 @@ function matchesPatterns(path: string, patterns: IgnorePattern[]): boolean {
 }
 
 function matchesPattern(path: string, pattern: IgnorePattern): boolean {
+    const pathForPattern = pathRelativeToPatternBase(path, pattern)
+    if (pathForPattern === undefined) {
+        return false
+    }
+
     if (pattern.onlyDirectory) {
-        return matchesPathOrDescendant(path, pattern)
+        return matchesPathOrDescendant(pathForPattern, pattern)
     }
 
     if (pattern.pattern.includes('*')) {
-        return matchesGlob(path, pattern)
+        return matchesGlob(pathForPattern, pattern)
     }
 
     if (pattern.rootRelative || pattern.pattern.includes('/')) {
         return (
-            path === pattern.pattern || path.startsWith(`${pattern.pattern}/`)
+            pathForPattern === pattern.pattern ||
+            pathForPattern.startsWith(`${pattern.pattern}/`)
         )
     }
 
-    return path.split('/').includes(pattern.pattern)
+    return pathForPattern.split('/').includes(pattern.pattern)
+}
+
+function pathRelativeToPatternBase(
+    path: string,
+    pattern: IgnorePattern,
+): string | undefined {
+    if (!pattern.basePath) {
+        return path
+    }
+    if (path === pattern.basePath) {
+        return ''
+    }
+    if (!path.startsWith(`${pattern.basePath}/`)) {
+        return undefined
+    }
+    return path.slice(pattern.basePath.length + 1)
 }
 
 function matchesPathOrDescendant(
@@ -233,4 +285,8 @@ function isSecretExtension(fileName: string): boolean {
 function extensionOf(fileName: string): string {
     const dotIndex = fileName.lastIndexOf('.')
     return dotIndex > 0 ? fileName.slice(dotIndex).toLowerCase() : ''
+}
+
+function normalizeRelativePath(path: string): string {
+    return path.replaceAll('\\', '/').replace(/^\/+|\/+$/gu, '')
 }
