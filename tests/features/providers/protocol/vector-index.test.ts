@@ -3,7 +3,7 @@ import { mkdtemp, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import getDb from '@/database/actions/_db'
-import { vectorIndexEntries } from '@/database/schema'
+import { targetEmbeddings, vectorIndexEntries } from '@/database/schema'
 import {
     deleteVectorIndexTargets,
     searchVectorIndex,
@@ -84,7 +84,7 @@ describe('vector index', () => {
     })
 
     it('keeps repaired vectors fresh on a second changed extraction', async () => {
-        await makeTempProject()
+        await makeTempProject(300)
         const context = await loadProjectContext()
 
         await extractProject(context, 'full', {
@@ -104,17 +104,81 @@ describe('vector index', () => {
         expect(repaired.embeddingReusedCount).toBeGreaterThan(0)
         expect(stable.embeddedCount).toBe(0)
         expect(stable.embeddingReusedCount).toBe(repaired.embeddingReusedCount)
+    }, 30000)
+
+    it('keeps exact fallback search bounded across durable vector pages', async () => {
+        await makeTempProject()
+        const db = await getDb()
+        const createdAt = new Date().toISOString()
+        const rows = Array.from({ length: 300 }, (_, index) => ({
+            createdAt,
+            dimensions: 4,
+            dtype: 'float32',
+            embeddingHash: `fallback-hash-${index}`,
+            model: 'fake/fallback',
+            normalized: 1,
+            targetId: `section-${index.toString().padStart(3, '0')}`,
+            targetType: 'section' as const,
+            vectorBlob: toBlob(
+                new Float32Array([index === 272 ? 1 : 0, 1, 0, 0]),
+            ),
+        }))
+        await db.insert(targetEmbeddings).values(rows)
+        useMissingVectorTableConnection()
+
+        await expect(
+            searchVectorIndex({
+                dimensions: 4,
+                limit: 1,
+                model: 'fake/fallback',
+                vector: new Float32Array([1, 1, 0, 0]),
+            }),
+        ).resolves.toMatchObject([{ targetId: 'section-272' }])
     })
 })
 
-async function makeTempProject(): Promise<string> {
+async function makeTempProject(fileCount = 1): Promise<string> {
     const projectRoot = await mkdtemp(join(tmpdir(), 'konteks-vector-index-'))
     tempDirs.push(projectRoot)
     await mkdir(join(projectRoot, '.git'))
     await mkdir(join(projectRoot, '.konteks'))
     await mkdir(join(projectRoot, 'src'))
     await writeFile(join(projectRoot, '.konteks', 'config.json'), '{}\n')
-    await writeFile(join(projectRoot, 'src', 'index.txt'), 'vector fixture\n')
+    await Promise.all(
+        Array.from({ length: fileCount }, (_, index) =>
+            writeFile(
+                join(projectRoot, 'src', `index-${index}.txt`),
+                `vector fixture ${index}\n`,
+            ),
+        ),
+    )
     process.chdir(projectRoot)
     return projectRoot
+}
+
+function toBlob(vector: Float32Array): Uint8Array {
+    return Buffer.from(vector.buffer, vector.byteOffset, vector.byteLength)
+}
+
+function useMissingVectorTableConnection(): void {
+    globalThis.__konteksVectorIndexConnectionFactoryForTests = async () => ({
+        database: {
+            exec() {},
+            loadExtension() {},
+            prepare() {
+                return {
+                    all() {
+                        return []
+                    },
+                    get() {
+                        return undefined
+                    },
+                    run() {
+                        return { lastInsertRowid: 0 }
+                    },
+                }
+            },
+        },
+        path: 'missing-vector-table.sqlite',
+    })
 }
