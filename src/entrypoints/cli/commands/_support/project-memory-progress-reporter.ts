@@ -1,8 +1,7 @@
 import consoleOutput from '@/support/console-output'
 import {
-    createInlineProgress,
+    createAnimatedInlineProgress,
     createTuiText,
-    spinnerFrame,
 } from '@/support/tui/components'
 import type { ExtractProjectResponse } from '@/types/extraction'
 import type { ExtractionProgressEvent } from '@/types/progress'
@@ -13,20 +12,17 @@ type ProjectMemoryProgressReporter = {
     summary(result: ExtractProjectResponse): void
 }
 
-const VECTOR_INDEX_SYNC_INTERVAL_MS = 100
-
 export default function createProjectMemoryProgressReporter(): ProjectMemoryProgressReporter {
     let printedDocumentLine = false
     let printedPreparation = false
     let generatedSummary = false
     let fileCount = 0
     let sectionCount = 0
-    let spinnerIndex = 0
     let modelPercent: number | undefined
-    let vectorIndexSyncTimer: ReturnType<typeof setInterval> | undefined
     let vectorIndexSyncLines: [string, string] | undefined
-    const inline = createInlineProgress(value =>
-        consoleOutput.writeError(value),
+    const inline = createAnimatedInlineProgress(
+        value => consoleOutput.writeError(value),
+        { isEnabled: consoleOutput.stderrIsInteractive() },
     )
     const text = createTuiText(consoleOutput.colorPalette)
 
@@ -182,7 +178,6 @@ export default function createProjectMemoryProgressReporter(): ProjectMemoryProg
             pausedVectorLine(current, total),
             vectorIndexSyncMessage(event),
         ]
-        renderVectorIndexSync()
         startVectorIndexSync()
     }
 
@@ -218,7 +213,7 @@ export default function createProjectMemoryProgressReporter(): ProjectMemoryProg
 
     function preparationMessage(): string {
         if (modelPercent === undefined) {
-            return `Preparing dependencies: ${spinnerFrame(spinnerIndex)}`
+            return 'Preparing dependencies'
         }
 
         const percent = modelPercent
@@ -231,8 +226,9 @@ export default function createProjectMemoryProgressReporter(): ProjectMemoryProg
 
     function writeProgress(message: string): void {
         clearVectorIndexSync()
-        inline.write(text.progressLine(spinnerIndex, message))
-        spinnerIndex += 1
+        inline.writeAnimated(spinnerIndex =>
+            text.progressLine(spinnerIndex, message),
+        )
     }
 
     function printCheck(message: string): void {
@@ -290,25 +286,12 @@ export default function createProjectMemoryProgressReporter(): ProjectMemoryProg
     }
 
     function startVectorIndexSync(): void {
-        stopVectorIndexSync()
-        vectorIndexSyncTimer = setInterval(
-            renderVectorIndexSync,
-            VECTOR_INDEX_SYNC_INTERVAL_MS,
+        inline.writeAnimatedBlock(spinnerIndex =>
+            renderVectorIndexSync(spinnerIndex),
         )
-        unrefTimer(vectorIndexSyncTimer)
-    }
-
-    function stopVectorIndexSync(): void {
-        if (vectorIndexSyncTimer === undefined) {
-            return
-        }
-
-        clearInterval(vectorIndexSyncTimer)
-        vectorIndexSyncTimer = undefined
     }
 
     function clearVectorIndexSync(): void {
-        stopVectorIndexSync()
         if (vectorIndexSyncLines === undefined) {
             return
         }
@@ -317,17 +300,13 @@ export default function createProjectMemoryProgressReporter(): ProjectMemoryProg
         inline.clear()
     }
 
-    function renderVectorIndexSync(): void {
+    function renderVectorIndexSync(spinnerIndex: number): string[] {
         if (vectorIndexSyncLines === undefined) {
-            return
+            return []
         }
 
         const [pausedLine, syncMessage] = vectorIndexSyncLines
-        inline.writeBlock([
-            pausedLine,
-            text.progressLine(spinnerIndex, syncMessage),
-        ])
-        spinnerIndex += 1
+        return [pausedLine, text.progressLine(spinnerIndex, syncMessage)]
     }
 }
 
@@ -336,15 +315,4 @@ function isModelReadyEvent(event: ExtractionProgressEvent): boolean {
         event.stage === 'prepare' &&
         /Embedding model ready/u.test(event.message ?? '')
     )
-}
-
-function unrefTimer(timer: ReturnType<typeof setInterval>): void {
-    if (typeof timer !== 'object' || timer === null || !('unref' in timer)) {
-        return
-    }
-
-    const unrefable = timer as { unref?: unknown }
-    if (typeof unrefable.unref === 'function') {
-        unrefable.unref()
-    }
 }
