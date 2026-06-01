@@ -13,6 +13,8 @@ type ProjectMemoryProgressReporter = {
     summary(result: ExtractProjectResponse): void
 }
 
+const VECTOR_INDEX_SYNC_INTERVAL_MS = 100
+
 export default function createProjectMemoryProgressReporter(): ProjectMemoryProgressReporter {
     let printedDocumentLine = false
     let printedPreparation = false
@@ -21,6 +23,8 @@ export default function createProjectMemoryProgressReporter(): ProjectMemoryProg
     let sectionCount = 0
     let spinnerIndex = 0
     let modelPercent: number | undefined
+    let vectorIndexSyncTimer: ReturnType<typeof setInterval> | undefined
+    let vectorIndexSyncLines: [string, string] | undefined
     const inline = createInlineProgress(value =>
         consoleOutput.writeError(value),
     )
@@ -28,6 +32,11 @@ export default function createProjectMemoryProgressReporter(): ProjectMemoryProg
 
     return {
         done() {
+            if (vectorIndexSyncLines !== undefined) {
+                clearVectorIndexSync()
+                return
+            }
+
             inline.done()
         },
         report(event) {
@@ -100,7 +109,7 @@ export default function createProjectMemoryProgressReporter(): ProjectMemoryProg
                 event.stage === 'index' &&
                 event.status === 'done'
             ) {
-                inline.clear()
+                clearVectorIndexSync()
                 return
             }
 
@@ -114,10 +123,12 @@ export default function createProjectMemoryProgressReporter(): ProjectMemoryProg
 
             if (event.phase === 'summary' && event.status === 'done') {
                 generatedSummary = true
+                clearVectorIndexSync()
                 inline.done()
             }
         },
         summary(result) {
+            clearVectorIndexSync()
             if (!printedDocumentLine) {
                 sectionCount = result.sectionCount
                 fileCount = result.fileCount
@@ -167,8 +178,12 @@ export default function createProjectMemoryProgressReporter(): ProjectMemoryProg
     function printVectorIndexSyncStart(event: ExtractionProgressEvent): void {
         const current = event.current ?? 0
         const total = event.total ?? current
-        inline.complete(pausedVectorLine(current, total))
-        writeProgress(vectorIndexSyncMessage(event))
+        vectorIndexSyncLines = [
+            pausedVectorLine(current, total),
+            vectorIndexSyncMessage(event),
+        ]
+        renderVectorIndexSync()
+        startVectorIndexSync()
     }
 
     function printPreparation(event: ExtractionProgressEvent): void {
@@ -215,6 +230,7 @@ export default function createProjectMemoryProgressReporter(): ProjectMemoryProg
     }
 
     function writeProgress(message: string): void {
+        clearVectorIndexSync()
         inline.write(text.progressLine(spinnerIndex, message))
         spinnerIndex += 1
     }
@@ -272,6 +288,47 @@ export default function createProjectMemoryProgressReporter(): ProjectMemoryProg
 
         return event.message ?? 'Syncing vector index...'
     }
+
+    function startVectorIndexSync(): void {
+        stopVectorIndexSync()
+        vectorIndexSyncTimer = setInterval(
+            renderVectorIndexSync,
+            VECTOR_INDEX_SYNC_INTERVAL_MS,
+        )
+        unrefTimer(vectorIndexSyncTimer)
+    }
+
+    function stopVectorIndexSync(): void {
+        if (vectorIndexSyncTimer === undefined) {
+            return
+        }
+
+        clearInterval(vectorIndexSyncTimer)
+        vectorIndexSyncTimer = undefined
+    }
+
+    function clearVectorIndexSync(): void {
+        stopVectorIndexSync()
+        if (vectorIndexSyncLines === undefined) {
+            return
+        }
+
+        vectorIndexSyncLines = undefined
+        inline.clear()
+    }
+
+    function renderVectorIndexSync(): void {
+        if (vectorIndexSyncLines === undefined) {
+            return
+        }
+
+        const [pausedLine, syncMessage] = vectorIndexSyncLines
+        inline.writeBlock([
+            pausedLine,
+            text.progressLine(spinnerIndex, syncMessage),
+        ])
+        spinnerIndex += 1
+    }
 }
 
 function isModelReadyEvent(event: ExtractionProgressEvent): boolean {
@@ -279,4 +336,15 @@ function isModelReadyEvent(event: ExtractionProgressEvent): boolean {
         event.stage === 'prepare' &&
         /Embedding model ready/u.test(event.message ?? '')
     )
+}
+
+function unrefTimer(timer: ReturnType<typeof setInterval>): void {
+    if (typeof timer !== 'object' || timer === null || !('unref' in timer)) {
+        return
+    }
+
+    const unrefable = timer as { unref?: unknown }
+    if (typeof unrefable.unref === 'function') {
+        unrefable.unref()
+    }
 }

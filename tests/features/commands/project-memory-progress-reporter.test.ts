@@ -4,7 +4,7 @@ import consoleOutput from '@/support/console-output'
 import stripAnsi from '@/support/strip-ansi'
 
 describe('project memory progress reporter', () => {
-    it('shows transient vector index sync progress at batch boundaries', () => {
+    it('shows transient vector index sync progress at batch boundaries', async () => {
         const output: string[] = []
         const logSpy = spyOn(consoleOutput, 'print').mockImplementation(
             message => {
@@ -45,6 +45,7 @@ describe('project memory progress reporter', () => {
                 status: 'start',
                 total: 18868,
             })
+            await new Promise(resolve => setTimeout(resolve, 125))
             reporter.report({
                 batchCurrent: 2,
                 batchSize: 5000,
@@ -66,12 +67,17 @@ describe('project memory progress reporter', () => {
             const rendered = stripAnsi(output.join(''))
             expect(rendered).toContain('⏸ 10000/18868 vectors indexed')
             expect(rendered).toContain(
-                'Syncing vector index: batch 2/4, writing 5000 vectors...',
+                '⠙ Syncing vector index: batch 2/4, writing 5000 vectors...',
+            )
+            expect(rendered).toContain(
+                '⠹ Syncing vector index: batch 2/4, writing 5000 vectors...',
             )
             expect(rendered).toContain('10001/18868 vectors indexed')
-            expect(rendered).toMatch(
-                /Syncing vector index: batch 2\/4, writing 5000 vectors\.\.\.\r +\r/u,
-            )
+            expect(rendered).toContain(`${String.fromCharCode(27)}[1A`)
+            expect(rendered).not.toContain('◐')
+            expect(rendered).not.toContain('◓')
+            expect(rendered).not.toContain('◑')
+            expect(rendered).not.toContain('◒')
         } finally {
             logSpy.mockRestore()
             errorSpy.mockRestore()
