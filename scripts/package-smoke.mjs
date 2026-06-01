@@ -1,8 +1,16 @@
 import { spawn } from 'node:child_process'
-import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
+import {
+    access,
+    mkdir,
+    mkdtemp,
+    readdir,
+    rm,
+    writeFile,
+} from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 
+const packageBinName = 'konteks-cli'
 const manager = process.argv[2]
 const tarballPath = process.argv[3] ? resolve(process.argv[3]) : undefined
 const supportedManagers = new Set(['bun', 'npm', 'pnpm', 'yarn'])
@@ -14,7 +22,8 @@ if (!supportedManagers.has(manager) || !tarballPath) {
 const tempRoot = await mkdtemp(join(tmpdir(), 'konteks-package-smoke-'))
 const projectRoot = join(tempRoot, 'project')
 const homeDir = join(tempRoot, 'home')
-const binName = process.platform === 'win32' ? 'konteks.cmd' : 'konteks'
+const binName =
+    process.platform === 'win32' ? `${packageBinName}.cmd` : packageBinName
 const cliPath = join(projectRoot, 'node_modules', '.bin', binName)
 
 try {
@@ -34,6 +43,7 @@ try {
     }
 
     await installPackage()
+    await assertInstalledBin()
 
     await expectCommand({
         args: ['--version'],
@@ -85,6 +95,20 @@ async function installPackage() {
     }
 
     console.log(`${manager}: installs packed tarball`)
+}
+
+async function assertInstalledBin() {
+    try {
+        await access(cliPath)
+        return
+    } catch {
+        const binDir = join(projectRoot, 'node_modules', '.bin')
+        const availableBins = await readdir(binDir).catch(() => [])
+
+        throw new Error(
+            `${manager}: missing installed bin ${binName} at ${cliPath}. Available bins: ${availableBins.join(', ') || 'none'}`,
+        )
+    }
 }
 
 async function expectCommand({ args, expectedOutput, name, success = true }) {
