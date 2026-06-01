@@ -11,6 +11,7 @@ type ConsoleOutputMessage =
     | ((palette: ConsoleColorPalette) => string)
 
 type WritableStream = {
+    fd?: number
     isTTY?: boolean
     write(section: string): unknown
 }
@@ -21,6 +22,7 @@ type ReadableStream = {
 
 class ConsoleOutput {
     public readonly colorPalette = colorPalette
+    private readonly nativeWriteError = this.writeError
 
     public constructor(
         private readonly stderr: WritableStream = process.stderr,
@@ -65,6 +67,12 @@ class ConsoleOutput {
 
     public stderrIsInteractive(): boolean {
         return Boolean(this.stderr.isTTY)
+    }
+
+    public stderrFileDescriptor(): number | undefined {
+        return this.writeError === this.nativeWriteError
+            ? this.stderr.fd
+            : undefined
     }
 
     public stdinIsInteractive(): boolean {

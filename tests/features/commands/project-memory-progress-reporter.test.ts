@@ -24,7 +24,9 @@ describe('project memory progress reporter', () => {
         ).mockReturnValue(true)
 
         try {
-            const reporter = createProjectMemoryProgressReporter()
+            const reporter = createProjectMemoryProgressReporter({
+                workerFileDescriptor: false,
+            })
 
             reporter.report({
                 phase: 'embeddings',
@@ -110,7 +112,9 @@ describe('project memory progress reporter', () => {
         ).mockReturnValue(true)
 
         try {
-            const reporter = createProjectMemoryProgressReporter()
+            const reporter = createProjectMemoryProgressReporter({
+                workerFileDescriptor: false,
+            })
 
             reporter.report({
                 current: 1,
@@ -153,7 +157,9 @@ describe('project memory progress reporter', () => {
         ).mockReturnValue(false)
 
         try {
-            const reporter = createProjectMemoryProgressReporter()
+            const reporter = createProjectMemoryProgressReporter({
+                workerFileDescriptor: false,
+            })
 
             reporter.report({
                 current: 1,

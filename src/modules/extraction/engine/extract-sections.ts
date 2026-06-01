@@ -118,6 +118,7 @@ export default async function extractSections(
             status: 'start',
             total: files.length,
         })
+        await yieldToProgressRenderer()
     }
     for (const [fileIndex, file] of files.entries()) {
         const preparedFile = await prepareFileSections({
@@ -160,6 +161,7 @@ export default async function extractSections(
             status: 'progress',
             total: files.length,
         })
+        await yieldToProgressRenderer()
     }
 
     if (files.length > 0) {
@@ -219,6 +221,10 @@ export default async function extractSections(
         parserUsedFiles,
         sectionCount: sectionCount,
     }
+}
+
+async function yieldToProgressRenderer(): Promise<void> {
+    await new Promise(resolve => setTimeout(resolve, 0))
 }
 
 function dedupeModuleKeys(keys: ModuleArtifactKey[]): ModuleArtifactKey[] {
