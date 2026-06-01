@@ -53,13 +53,13 @@ try {
 
     await expectCommand({
         args: ['--help'],
-        expectedOutput: ['usage:', 'init', 'status', 'mcp'],
+        expectedOutput: ['init', 'status', 'mcp', '--help'],
         name: 'prints root help',
     })
 
     await expectCommand({
         args: ['mcp', '--help'],
-        expectedOutput: ['usage:', 'tools'],
+        expectedOutput: ['tools', '--help'],
         name: 'prints MCP help',
     })
 
