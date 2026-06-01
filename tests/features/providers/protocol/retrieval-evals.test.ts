@@ -4,7 +4,9 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp'
 import type { CallToolResult } from '@modelcontextprotocol/sdk/types.js'
-import searchMemory from '@/database/services/search-memory'
+import searchMemory, {
+    normalizeRecallFocus,
+} from '@/database/services/search-memory'
 import { searchVectorIndex } from '@/database/services/vector-index'
 import mcpTools from '@/entrypoints/mcp/tools'
 import { readExtractionManifest } from '@/modules/extraction/engine/manifest'
@@ -63,6 +65,32 @@ afterEach(async () => {
 })
 
 describe('retrieval quality evals', () => {
+    it('normalizes recall focus into ordered items, query, and terms', () => {
+        const focus = normalizeRecallFocus([
+            '  first module decision  ',
+            '',
+            'second file behavior',
+        ])
+
+        expect(focus.items).toEqual([
+            'first module decision',
+            'second file behavior',
+        ])
+        expect(focus.query).toBe('first module decision\nsecond file behavior')
+        expect(focus.terms).toEqual([
+            'first',
+            'module',
+            'decision',
+            'second',
+            'file',
+            'behavior',
+        ])
+        expect(focus.itemQueries.map(item => item.terms)).toEqual([
+            ['first', 'module', 'decision'],
+            ['second', 'file', 'behavior'],
+        ])
+    })
+
     it('falls back cleanly when no graph or retrieval data exists', async () => {
         const projectRoot = await mkdtemp(join(tmpdir(), 'konteks-eval-empty-'))
         tempDirs.push(projectRoot)
@@ -70,10 +98,11 @@ describe('retrieval quality evals', () => {
 
         const recall = await withProjectRoot(projectRoot, () =>
             recallRepositoryMemory({
-                focus: ['unindexed graph empty fallback'],
+                focus: ['  unindexed graph empty fallback  ', ''],
             }),
         )
 
+        expect(recall.focus).toEqual(['unindexed graph empty fallback'])
         expect(recall.quality).toBe('weak')
         expect(recall.memories).toEqual([])
         expect(recall.graph).toEqual([])
@@ -305,6 +334,50 @@ describe('retrieval quality evals', () => {
         expect(text).toContain('src/mcp')
         expect(text).not.toContain('docs/getting-started')
         expect(text).not.toContain('- -')
+    })
+
+    it('retrieves evidence for later focus items beyond aggregate term limits', async () => {
+        const projectRoot = await mkdtemp(
+            join(tmpdir(), 'konteks-eval-multi-focus-'),
+        )
+        tempDirs.push(projectRoot)
+        await mkdir(join(projectRoot, 'src'))
+        await mkdir(join(projectRoot, '.git'))
+        await writeFile(
+            join(projectRoot, 'src', 'early.txt'),
+            [
+                'alpha01 alpha02 alpha03 alpha04',
+                'alpha05 alpha06 alpha07 alpha08',
+                'alpha09 alpha10 alpha11 alpha12',
+            ].join(' '),
+        )
+        await writeFile(
+            join(projectRoot, 'src', 'late.txt'),
+            'latefocusneedle retrieval evidence\n',
+        )
+        const context = await withProjectRoot(projectRoot, () =>
+            loadProjectContext(),
+        )
+        await withProjectRoot(projectRoot, () =>
+            extractProject(context, 'full', extractionOptions()),
+        )
+
+        const recall = await withProjectRoot(projectRoot, () =>
+            recallRepositoryMemory({
+                focus: [
+                    [
+                        'alpha01 alpha02 alpha03 alpha04',
+                        'alpha05 alpha06 alpha07 alpha08',
+                        'alpha09 alpha10 alpha11 alpha12',
+                    ].join(' '),
+                    'latefocusneedle retrieval evidence',
+                ],
+            }),
+        )
+
+        expect(recall.memories.map(memory => memory.path)).toEqual(
+            expect.arrayContaining(['src/early.txt', 'src/late.txt']),
+        )
     })
 
     it('keeps direct text matches ahead of graph-boosted weaker matches', async () => {

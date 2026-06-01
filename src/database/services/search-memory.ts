@@ -46,8 +46,18 @@ export type MemorySearchInput = {
     limit?: number
 }
 
+export type RecallFocus = {
+    itemQueries: Array<{
+        item: string
+        terms: string[]
+    }>
+    items: string[]
+    query: string
+    terms: string[]
+}
+
 export type MemoryRecallInput = {
-    focus: string[]
+    focus: RecallFocus
     includeSources?: boolean
 }
 
@@ -64,53 +74,59 @@ async function searchBoundMemory(
 ): Promise<MemorySearchResult[]> {
     const mode: SearchMode = 'query' in input ? 'search' : 'recall'
     const limit = 'limit' in input ? (input.limit ?? 10) : (options.limit ?? 10)
-    const query = 'query' in input ? input.query : focusToQuery(input.focus)
-    const terms = tokenize(query)
-    const intent = detectIntent(query)
+    const terms = 'query' in input ? tokenize(input.query) : input.focus.terms
+    const intent = detectIntent(
+        'query' in input ? input.query : input.focus.query,
+    )
 
     if (terms.length === 0) {
         return []
     }
 
-    const retrievalResults = await searchRetrievalDocuments(
-        terms,
-        limit,
-        mode,
-        intent,
-        options,
-    )
+    const retrievalResults =
+        'query' in input
+            ? await searchRetrievalDocuments(
+                  terms,
+                  limit,
+                  mode,
+                  intent,
+                  options,
+              )
+            : await searchRecallRetrievalDocuments(input.focus, limit, options)
     if (retrievalResults.length > 0) {
         return retrievalResults
     }
 
     if (await hasSearchIndex()) {
-        const ftsResults = await searchFts(terms, limit, mode, intent)
+        const ftsResults =
+            'query' in input
+                ? await searchFts(terms, limit, mode, intent)
+                : await searchRecallFts(input.focus, limit)
         if (ftsResults.length > 0) {
             return ftsResults
         }
     }
 
-    const observations = await queryObservations(terms, limit * 2)
-    const diaries = await queryDiaries(terms, limit * 2)
+    if ('query' in input) {
+        return searchLooseMemory(terms, limit, mode, intent)
+    }
 
-    return applyGroupAwarePruning(
-        [
-            ...observations.map(row => observationToResult(row, terms)),
-            ...diaries.map(row => diaryToResult(row, terms)),
-        ],
-        mode,
-        limit,
-    )
-        .filter(result => allowResult(result, mode, intent))
-        .sort(compareSearchResults)
-        .slice(0, limit)
+    return searchRecallLooseMemory(input.focus, limit)
 }
 
-export function focusToQuery(focus: string[]): string {
-    return focus
-        .map(item => item.trim())
-        .filter(Boolean)
-        .join('\n')
+export function normalizeRecallFocus(focus: string[]): RecallFocus {
+    const items = focus.map(item => item.trim()).filter(Boolean)
+    const query = items.join('\n')
+
+    return {
+        itemQueries: items.map(item => ({
+            item,
+            terms: tokenize(item),
+        })),
+        items,
+        query,
+        terms: tokenize(query),
+    }
 }
 
 async function searchRetrievalDocuments(
@@ -163,6 +179,41 @@ async function searchRetrievalDocuments(
         .map(result => applyGraphBoost(result, graphContext.boosts))
         .sort(compareSearchResults)
         .slice(0, limit)
+}
+
+async function searchRecallRetrievalDocuments(
+    focus: RecallFocus,
+    limit: number,
+    options: SearchMemoryOptions,
+): Promise<MemorySearchResult[]> {
+    const aggregateResults = await searchRetrievalDocuments(
+        focus.terms,
+        limit,
+        'recall',
+        detectIntent(focus.query),
+        options,
+    )
+
+    if (focus.itemQueries.length <= 1) {
+        return aggregateResults
+    }
+
+    const focusedResults = await Promise.all(
+        focus.itemQueries.map(item =>
+            searchRetrievalDocuments(
+                item.terms,
+                limit,
+                'recall',
+                detectIntent(item.item),
+                options,
+            ),
+        ),
+    )
+
+    return mergeRecallResults(
+        [aggregateResults, ...focusedResults].flat(),
+        limit,
+    )
 }
 
 async function expandWithVectorCandidates(input: {
@@ -239,6 +290,106 @@ async function searchFts(
     )
         .filter(result => allowResult(result, mode, intent))
         .sort(compareSearchResults)
+}
+
+async function searchRecallFts(
+    focus: RecallFocus,
+    limit: number,
+): Promise<MemorySearchResult[]> {
+    const aggregateResults = await searchFts(
+        focus.terms,
+        limit,
+        'recall',
+        detectIntent(focus.query),
+    )
+
+    if (focus.itemQueries.length <= 1) {
+        return aggregateResults
+    }
+
+    const focusedResults = await Promise.all(
+        focus.itemQueries.map(item =>
+            searchFts(item.terms, limit, 'recall', detectIntent(item.item)),
+        ),
+    )
+
+    return mergeRecallResults(
+        [aggregateResults, ...focusedResults].flat(),
+        limit,
+    )
+}
+
+async function searchLooseMemory(
+    terms: string[],
+    limit: number,
+    mode: SearchMode,
+    intent: SearchIntent,
+): Promise<MemorySearchResult[]> {
+    const observations = await queryObservations(terms, limit * 2)
+    const diaries = await queryDiaries(terms, limit * 2)
+
+    return applyGroupAwarePruning(
+        [
+            ...observations.map(row => observationToResult(row, terms)),
+            ...diaries.map(row => diaryToResult(row, terms)),
+        ],
+        mode,
+        limit,
+    )
+        .filter(result => allowResult(result, mode, intent))
+        .sort(compareSearchResults)
+        .slice(0, limit)
+}
+
+async function searchRecallLooseMemory(
+    focus: RecallFocus,
+    limit: number,
+): Promise<MemorySearchResult[]> {
+    const aggregateResults = await searchLooseMemory(
+        focus.terms,
+        limit,
+        'recall',
+        detectIntent(focus.query),
+    )
+
+    if (focus.itemQueries.length <= 1) {
+        return aggregateResults
+    }
+
+    const focusedResults = await Promise.all(
+        focus.itemQueries.map(item =>
+            searchLooseMemory(
+                item.terms,
+                limit,
+                'recall',
+                detectIntent(item.item),
+            ),
+        ),
+    )
+
+    return mergeRecallResults(
+        [aggregateResults, ...focusedResults].flat(),
+        limit,
+    )
+}
+
+function mergeRecallResults(
+    results: MemorySearchResult[],
+    limit: number,
+): MemorySearchResult[] {
+    const byTarget = new Map<string, MemorySearchResult>()
+
+    for (const result of results) {
+        const key = resultKey(result)
+        const previous = byTarget.get(key)
+        if (!previous || compareSearchResults(result, previous) < 0) {
+            byTarget.set(key, result)
+        }
+    }
+
+    return applyGroupAwarePruning([...byTarget.values()], 'recall', limit)
+        .sort(compareSearchResults)
+        .slice(0, limit)
 }
 
 function observationToResult(
