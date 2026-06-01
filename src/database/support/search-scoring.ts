@@ -15,6 +15,7 @@ export function makeSearchResult(input: {
     embeddingModel?: string
     id: string
     kind?: string
+    metadata?: Record<string, unknown>
     path?: string
     sourceId?: string
     sourceRole?: string
@@ -50,6 +51,7 @@ export function makeSearchResult(input: {
         excerpt: trimToTokenBudget(input.content, excerptBudgetTokens),
         id: input.id,
         kind: input.kind,
+        metadata: input.metadata,
         path: input.path,
         score,
         scoreDetails: {

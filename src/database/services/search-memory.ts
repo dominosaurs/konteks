@@ -470,11 +470,13 @@ function retrievalDocumentToResult(
         embeddingModel: row.embedding_model ?? undefined,
         id: row.target_id,
         kind: sourceRole,
+        metadata: metadataForRetrievalRow(row),
         path: row.path ?? undefined,
         sourceId: row.source_id ?? undefined,
         sourceRole,
         targetType: row.target_type,
         terms,
+        textForScoring: row.fts_text,
         tokenCost:
             row.token_count ?? estimateTextTokens(row.summary ?? row.fts_text),
         type,
@@ -499,6 +501,42 @@ function applyGraphBoost(
         },
         score: result.score + boost,
     }
+}
+
+function metadataForRetrievalRow(
+    row: RetrievalDocumentRow,
+): Record<string, unknown> | undefined {
+    if (!row.section_kind) {
+        return undefined
+    }
+
+    const proseKind = proseKindForSection(row.section_kind)
+    return {
+        contentType: proseKind
+            ? 'prose'
+            : contentTypeForSection(row.section_kind),
+        proseKind,
+        sectionKind: row.section_kind,
+    }
+}
+
+function proseKindForSection(kind: string): string | undefined {
+    if (kind === 'comment' || kind === 'markdown' || kind === 'text') {
+        return kind
+    }
+
+    return undefined
+}
+
+function contentTypeForSection(kind: string): string {
+    if (kind === 'json') {
+        return 'data'
+    }
+    if (kind === 'code') {
+        return 'code'
+    }
+
+    return 'unknown'
 }
 
 function resolveSourceRole(
