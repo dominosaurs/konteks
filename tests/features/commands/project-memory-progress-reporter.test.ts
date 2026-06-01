@@ -132,4 +132,47 @@ describe('project memory progress reporter', () => {
             interactiveSpy.mockRestore()
         }
     })
+
+    it('animates project memory extraction even when stderr is not a TTY', async () => {
+        const output: string[] = []
+        const logSpy = spyOn(consoleOutput, 'print').mockImplementation(
+            message => {
+                output.push(String(message))
+                return consoleOutput
+            },
+        )
+        const errorSpy = spyOn(consoleOutput, 'writeError').mockImplementation(
+            message => {
+                output.push(String(message))
+                return consoleOutput
+            },
+        )
+        const interactiveSpy = spyOn(
+            consoleOutput,
+            'stderrIsInteractive',
+        ).mockReturnValue(false)
+
+        try {
+            const reporter = createProjectMemoryProgressReporter()
+
+            reporter.report({
+                current: 1,
+                phase: 'sections',
+                sectionCount: 3,
+                status: 'progress',
+                total: 10,
+            })
+            await new Promise(resolve => setTimeout(resolve, 225))
+            reporter.done()
+
+            const rendered = stripAnsi(output.join(''))
+            expect(rendered).toContain('⠋ Extracting files: 1/10')
+            expect(rendered).toContain('⠙ Extracting files: 1/10')
+            expect(rendered).toContain('⠹ Extracting files: 1/10')
+        } finally {
+            logSpy.mockRestore()
+            errorSpy.mockRestore()
+            interactiveSpy.mockRestore()
+        }
+    })
 })
