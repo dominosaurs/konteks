@@ -4,6 +4,7 @@ export type SearchMode = 'recall' | 'search'
 
 export type SearchIntent = {
     allowsDiary: boolean
+    conceptualTask: boolean
     implementationTask: boolean
     prefersAgentReference: boolean
 }
@@ -47,6 +48,10 @@ export function detectIntent(query: string): SearchIntent {
             /\b(continue|resume|history|previous|last time|already tried|debug|blocked|why failed|follow up)\b/iu.test(
                 normalized,
             ),
+        conceptualTask:
+            /\b(why|how|behavior|behaviour|convention|policy|rationale|usage|docs?|comment|comments|plan|explain|overview|architecture|guidance)\b/iu.test(
+                normalized,
+            ),
         implementationTask:
             /\b(add|build|change|fix|implement|improve|patch|refactor|test|update)\b/iu.test(
                 normalized,
@@ -76,6 +81,8 @@ export function applyRolePolicy(
     intent: SearchIntent,
 ): MemorySearchResult {
     const role = result.sourceRole ?? result.kind
+    const proseKind = result.metadata?.proseKind
+    const isProseSection = result.metadata?.contentType === 'prose'
     let scoreDelta = 0
     if (mode === 'recall') {
         if (
@@ -93,7 +100,21 @@ export function applyRolePolicy(
             scoreDelta += 15
         }
         if (role === 'product_doc') {
-            scoreDelta += intent.implementationTask ? -10 : 10
+            scoreDelta +=
+                intent.implementationTask && !intent.conceptualTask ? -10 : 10
+        }
+        if (role === 'implementation_plan') {
+            scoreDelta += intent.conceptualTask ? 20 : 0
+        }
+        if (isProseSection) {
+            scoreDelta += intent.conceptualTask
+                ? 30
+                : intent.implementationTask
+                  ? -45
+                  : 0
+        }
+        if (proseKind === 'comment') {
+            scoreDelta += intent.conceptualTask ? 15 : -5
         }
         if (intent.implementationTask && result.path?.startsWith('src/')) {
             scoreDelta += 25

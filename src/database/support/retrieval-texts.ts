@@ -1,8 +1,10 @@
 export function buildSectionRetrievalTexts(input: {
     anchor?: string
     content: string
+    contentType?: string
     language: string
     path: string
+    proseKind?: string
     sourceRole: string
     summary: string
     topics: string[]
@@ -13,6 +15,8 @@ export function buildSectionRetrievalTexts(input: {
         `path: ${location}`,
         `role: ${input.sourceRole}`,
         `language: ${input.language}`,
+        input.contentType ? `content_type: ${input.contentType}` : '',
+        input.proseKind ? `prose_kind: ${input.proseKind}` : '',
         input.anchor ? `anchor: ${input.anchor}` : '',
         topicText ? `topics: ${topicText}` : '',
         `summary: ${input.summary}`,

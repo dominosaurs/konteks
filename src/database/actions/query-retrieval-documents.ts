@@ -18,6 +18,7 @@ export type RetrievalDocumentRow = {
     rank: number
     source_id: string | null
     source_role: string | null
+    section_kind: string | null
     target_id: string
     target_embedding_hash: string | null
     target_type: 'section' | 'diary' | 'memory' | 'module'
@@ -58,6 +59,7 @@ export default async function queryRetrievalDocuments(
             fts_text: retrievalDocuments.ftsText,
             path: retrievalDocuments.path,
             rank: sql<number>`bm25(retrieval_documents_fts)`,
+            section_kind: sections.kind,
             source_id: retrievalDocuments.sourceId,
             source_role: retrievalDocuments.sourceRole,
             summary: retrievalDocuments.summary,
@@ -143,6 +145,7 @@ export async function queryRetrievalDocumentsByTargets(
             fts_text: retrievalDocuments.ftsText,
             path: retrievalDocuments.path,
             rank: sql<number>`0`,
+            section_kind: sections.kind,
             source_id: retrievalDocuments.sourceId,
             source_role: retrievalDocuments.sourceRole,
             summary: retrievalDocuments.summary,

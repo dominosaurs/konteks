@@ -479,6 +479,86 @@ describe('retrieval quality evals', () => {
         ).toBe(false)
     })
 
+    it('ranks prose documentation first for conceptual recall', async () => {
+        const projectRoot = await mkdtemp(
+            join(tmpdir(), 'konteks-eval-prose-concept-'),
+        )
+        tempDirs.push(projectRoot)
+        await mkdir(join(projectRoot, '.git'))
+        await writeFile(
+            join(projectRoot, 'README.md'),
+            '# Lifecycle Policy\nThe lifecycle policy explains why startup waits for project memory.\n',
+        )
+        await writeFile(
+            join(projectRoot, 'package.json'),
+            JSON.stringify(
+                {
+                    name: 'fixture',
+                    scripts: {
+                        lifecycle:
+                            'echo lifecycle policy startup project memory',
+                    },
+                },
+                null,
+                2,
+            ),
+        )
+        const context = await withProjectRoot(projectRoot, () =>
+            loadProjectContext(),
+        )
+        await withProjectRoot(projectRoot, () =>
+            extractProject(context, 'full', extractionOptions()),
+        )
+
+        const recall = await withProjectRoot(projectRoot, () =>
+            recallRepositoryMemory({
+                focus: ['why lifecycle policy startup project memory'],
+            }),
+        )
+
+        expect(recall.memories[0]?.path).toBe('README.md')
+    })
+
+    it('keeps implementation recall focused on package config over prose', async () => {
+        const projectRoot = await mkdtemp(
+            join(tmpdir(), 'konteks-eval-implementation-config-'),
+        )
+        tempDirs.push(projectRoot)
+        await mkdir(join(projectRoot, '.git'))
+        await writeFile(
+            join(projectRoot, 'README.md'),
+            '# Lifecycle Script\nThe lifecycle script updates startup project memory.\n',
+        )
+        await writeFile(
+            join(projectRoot, 'package.json'),
+            JSON.stringify(
+                {
+                    name: 'fixture',
+                    scripts: {
+                        lifecycle:
+                            'echo update lifecycle script startup project memory',
+                    },
+                },
+                null,
+                2,
+            ),
+        )
+        const context = await withProjectRoot(projectRoot, () =>
+            loadProjectContext(),
+        )
+        await withProjectRoot(projectRoot, () =>
+            extractProject(context, 'full', extractionOptions()),
+        )
+
+        const recall = await withProjectRoot(projectRoot, () =>
+            recallRepositoryMemory({
+                focus: ['update lifecycle script startup project memory'],
+            }),
+        )
+
+        expect(recall.memories[0]?.path).toBe('package.json')
+    })
+
     it('uses SQLite WASM local storage context for retrieval', async () => {
         const projectRoot = await mkdtemp(
             join(tmpdir(), 'konteks-eval-sqlite-'),

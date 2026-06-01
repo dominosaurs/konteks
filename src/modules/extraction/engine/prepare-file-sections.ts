@@ -107,6 +107,7 @@ export default async function prepareFileSections(input: {
     const sections = allSections.map(section => ({
         ...section,
         metadata: {
+            ...metadataForSectionKind(section.kind),
             parserEngine,
             parserStatus,
             ...section.metadata,
@@ -135,6 +136,10 @@ export default async function prepareFileSections(input: {
             `${input.file.path} ${section.anchor}`,
             `${section.summary}\n${section.content}`,
         )
+        const proseKind = proseKindForSection(section.kind)
+        const contentType = proseKind
+            ? 'prose'
+            : contentTypeForSection(section.kind)
         preparedSections.push({
             anchor: section.anchor,
             anchorType: section.anchorType,
@@ -155,8 +160,10 @@ export default async function prepareFileSections(input: {
             retrievalTexts: buildSectionRetrievalTexts({
                 anchor: section.anchor,
                 content: section.content,
+                contentType,
                 language,
                 path: section.path,
+                proseKind,
                 sourceRole,
                 summary: section.summary,
                 topics,
@@ -223,4 +230,37 @@ function sectionIdFor(
     hash: string,
 ): string {
     return `section_${contentHash(`${path}:${index}:${anchor}:${hash}`).slice(0, 32)}`
+}
+
+function proseKindForSection(kind: string): string | undefined {
+    if (kind === 'comment' || kind === 'markdown' || kind === 'text') {
+        return kind
+    }
+
+    return undefined
+}
+
+function contentTypeForSection(kind: string): string {
+    if (kind === 'json') {
+        return 'data'
+    }
+    if (kind === 'code') {
+        return 'code'
+    }
+
+    return 'unknown'
+}
+
+function metadataForSectionKind(kind: string): Record<string, unknown> {
+    const proseKind = proseKindForSection(kind)
+    if (proseKind) {
+        return {
+            contentType: 'prose',
+            proseKind,
+        }
+    }
+
+    return {
+        contentType: contentTypeForSection(kind),
+    }
 }
