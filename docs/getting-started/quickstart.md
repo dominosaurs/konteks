@@ -67,7 +67,7 @@ Open your coding agent from the root of your project after the MCP server is con
 
 ### 4. Warm Up
 
-Run the Warm Up prompt at the start of a fresh agent session. The topic is optional: leave it blank for general project context, or add a topic to focus the memories loaded during Warm Up.
+Run the Warm Up prompt at the start of a fresh agent session. The focus is optional: leave it blank for general project context, or add a free-form focus to shape the memories loaded during Warm Up.
 
 ```text
 /konteks-warm-up

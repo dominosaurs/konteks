@@ -4,7 +4,7 @@ import historicalRelations, {
 } from '@/database/actions/historical-relations'
 import { buildRetrievalGraphContext } from '@/database/services/graph-context'
 import searchMemory, {
-    type MemoryRecallInput,
+    normalizeRecallFocus,
 } from '@/database/services/search-memory'
 import type { EmbeddingProviderContract } from '@/types/embedding-provider'
 import type {
@@ -17,6 +17,11 @@ import type {
 const HISTORICAL_RELATION_LIMIT = 6
 const RECALL_OUTPUT_BUDGET_TOKENS = 2000
 
+type MemoryRecallInput = {
+    focus: string[]
+    includeSources?: boolean
+}
+
 export default async function recallRepositoryMemory(
     input: MemoryRecallInput,
     options: {
@@ -24,9 +29,10 @@ export default async function recallRepositoryMemory(
     } = {},
 ): Promise<RecallPackage> {
     return await withTransaction(async () => {
+        const focus = normalizeRecallFocus(input.focus)
         const memories = await searchMemory(
             {
-                task: input.task,
+                focus,
             },
             {
                 embeddingProvider: options.embeddingProvider,
@@ -35,14 +41,14 @@ export default async function recallRepositoryMemory(
             },
         )
         const graphContext = await buildRetrievalGraphContext(
-            input.task,
+            focus.query,
             memories,
         )
         const entities = graphContext.entities
 
         const historyItems: RecallHistoryItem[] = []
 
-        if (needsHistory(input.task)) {
+        if (needsHistory(focus.query)) {
             const seenRelations = new Set<string>()
             const relations =
                 entities.length === 1
@@ -63,7 +69,7 @@ export default async function recallRepositoryMemory(
                     objectEntityId: relation.object.id,
                     objectEntityName: relation.object.name,
                     predicate: relation.predicate,
-                    reason: `Included because task asks for historical or superseded context.`,
+                    reason: `Included because focus asks for historical or superseded context.`,
                     relationId: relation.relationId,
                     status: relation.status,
                     subjectEntityId: relation.subject.id,
@@ -75,12 +81,12 @@ export default async function recallRepositoryMemory(
         }
 
         return assembleRecallPackage({
+            focus: focus.items,
             graph: graphContext.graph,
             history: historyItems,
             includeSources: input.includeSources ?? false,
             memories,
             outputBudgetTokens: RECALL_OUTPUT_BUDGET_TOKENS,
-            task: input.task,
         })
     })
 }
@@ -89,9 +95,9 @@ function assembleRecallPackage(input: {
     graph: RecallGraphItem[]
     history: RecallHistoryItem[]
     includeSources: boolean
+    focus: string[]
     memories: MemorySearchResult[]
     outputBudgetTokens: number
-    task: string
 }): RecallPackage {
     const dedupedMemories = dedupeRecallMemories(input.memories)
     const memories = applyTokenBudget(
@@ -108,6 +114,7 @@ function assembleRecallPackage(input: {
             primaryTargets,
             quality,
         }),
+        focus: input.focus,
         graph: input.includeSources ? input.graph : input.graph.slice(0, 6),
         history: input.includeSources
             ? input.history
@@ -116,13 +123,12 @@ function assembleRecallPackage(input: {
         primaryTargets,
         quality,
         sourceCount: dedupedMemories.length,
-        task: input.task,
     }
 }
 
-function needsHistory(task: string): boolean {
+function needsHistory(query: string): boolean {
     return /\b(history|historical|previous|prior|old|before|changed|why|superseded|invalidated|replaced|migration|attempt|rollback|decision)\b/iu.test(
-        task,
+        query,
     )
 }
 

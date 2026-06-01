@@ -56,7 +56,7 @@ describe('InstallSkillsCommand', () => {
 
         expect(warmUp).toContain('name: konteks-warm-up')
         expect(warmUp).toContain('any free-form text provided')
-        expect(warmUp).not.toContain('{{topic}}')
+        expect(warmUp).not.toContain('{{focus}}')
     })
 
     it('installs Konteks skills globally', async () => {

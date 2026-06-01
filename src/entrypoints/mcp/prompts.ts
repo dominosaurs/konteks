@@ -199,16 +199,11 @@ function renderArgumentValue(
 }
 
 function promptTemplateToSkillFile(template: PromptTemplate): SkillFile {
-    const body = template.body
-        .replaceAll('{{task}}', 'the task')
-        .replaceAll(
-            '{{topic}}',
-            'any free-form text provided after `$konteks-warm-up`, if any',
-        )
-        .replaceAll(
-            '{{prompt}}',
-            'any free-form text provided after `$konteks-warm-up`, if any',
-        )
+    const focusPlaceholder =
+        template.prompt.name === 'konteks-warm-up'
+            ? 'any free-form text provided after `$konteks-warm-up`, if any'
+            : 'the focus'
+    const body = template.body.replaceAll('{{focus}}', focusPlaceholder)
 
     return {
         content: `---\nname: ${template.prompt.name}\ndescription: Use when working with Konteks MCP memory. ${template.prompt.description}\n---\n\n# ${template.prompt.title}\n\n${body}`,

@@ -83,13 +83,13 @@ export type RecallHistoryItem = {
 
 export type RecallPackage = {
     brief: string[]
+    focus: string[]
     graph: RecallGraphItem[]
     history: RecallHistoryItem[]
     memories: MemorySearchResult[]
     primaryTargets: string[]
     quality: 'partial' | 'strong' | 'weak'
     sourceCount: number
-    task: string
 }
 
 export type WarmUpHighlight = {

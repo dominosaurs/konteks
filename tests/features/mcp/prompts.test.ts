@@ -51,12 +51,12 @@ describe('mcp/prompts', () => {
         const warmUp = server.registrations.find(
             prompt => prompt.name === 'konteks-warm-up',
         )
-        const result = warmUp?.handler({ topic: 'cli status command' })
+        const result = warmUp?.handler({ focus: 'cli status command' })
 
         expect(warmUp?.config.description).toBe(
             'Open a fresh Konteks session with project context.',
         )
-        expect(Object.keys(warmUp?.config.argsSchema ?? {})).toEqual(['topic'])
+        expect(Object.keys(warmUp?.config.argsSchema ?? {})).toEqual(['focus'])
         expect(result?.messages).toEqual([
             {
                 content: {
@@ -95,7 +95,7 @@ describe('mcp/prompts', () => {
         ])
         expect(warmUp?.content).toContain('name: konteks-warm-up')
         expect(warmUp?.content).toContain('any free-form text provided')
-        expect(warmUp?.content).not.toContain('{{topic}}')
+        expect(warmUp?.content).not.toContain('{{focus}}')
         expect(save?.content).toContain('"importance": 3')
     })
 })

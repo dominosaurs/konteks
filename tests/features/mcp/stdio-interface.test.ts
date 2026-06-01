@@ -72,7 +72,10 @@ describe('mcp/stdio interface', () => {
             )
             expect(warmUpTool?.inputSchema).toMatchObject({
                 properties: {
-                    topic: { type: 'string' },
+                    focus: {
+                        items: { type: 'string' },
+                        type: 'array',
+                    },
                 },
                 type: 'object',
             })
@@ -82,10 +85,13 @@ describe('mcp/stdio interface', () => {
             )
             expect(recallTool?.inputSchema).toMatchObject({
                 properties: {
+                    focus: {
+                        items: { type: 'string' },
+                        type: 'array',
+                    },
                     includeSources: { type: 'boolean' },
-                    task: { type: 'string' },
                 },
-                required: ['task'],
+                required: ['focus'],
                 type: 'object',
             })
 
@@ -168,7 +174,7 @@ describe('mcp/stdio interface', () => {
             const responses = await runMcpExchange(fixture.projectRoot, [
                 request(2, 'prompts/list'),
                 request(3, 'prompts/get', {
-                    arguments: { topic: 'cli status command' },
+                    arguments: { focus: 'cli status command' },
                     name: 'konteks-warm-up',
                 }),
             ])
@@ -187,7 +193,7 @@ describe('mcp/stdio interface', () => {
             expect(warmUpPrompt).toMatchObject({
                 arguments: [
                     {
-                        name: 'topic',
+                        name: 'focus',
                         required: false,
                     },
                 ],
@@ -212,7 +218,7 @@ describe('mcp/stdio interface', () => {
         try {
             const successResponses = await runMcpExchange(fixture.projectRoot, [
                 request(2, 'tools/call', {
-                    arguments: { task: 'project entry point' },
+                    arguments: { focus: ['project entry point'] },
                     name: 'konteks_recall',
                 }),
                 request(3, 'tools/call', {
