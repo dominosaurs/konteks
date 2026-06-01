@@ -52,6 +52,11 @@ type RetrievalDocumentCursor = Pick<
     'target_id' | 'target_type'
 >
 
+type VectorIndexBatch = {
+    current: number
+    total: number
+}
+
 const SQLITE_TARGET_LOOKUP_BIND_BATCH_SIZE = 400
 const RETRIEVAL_DOCUMENT_ROW_OVERHEAD_BYTES = 4096
 
@@ -80,7 +85,13 @@ export default async function generateTargetEmbeddings(
         await countRetrievalDocuments(targetTypes),
         options,
     )
+    if (state.total === 0) {
+        return finishEmbeddingRun(state, options)
+    }
+
     const batchSize = retrievalDocumentBatchSize(state.total)
+    const batchTotal = Math.ceil(state.total / batchSize)
+    let batchCurrent = 0
     let cursor: RetrievalDocumentCursor | undefined
     while (true) {
         const rows = await loadRetrievalDocumentPage(
@@ -88,11 +99,13 @@ export default async function generateTargetEmbeddings(
             cursor,
             batchSize,
         )
+        batchCurrent += 1
         await embedRetrievalDocumentRows(
             provider,
             rows,
             createdAt,
             state,
+            { current: batchCurrent, total: batchTotal },
             options,
         )
         if (rows.length < batchSize) {
@@ -116,16 +129,15 @@ export async function generateEmbeddingsForTargets(
     }
 
     const state = embeddingRunState(targets.length, options)
-    for (const targetChunk of chunks(
-        targets,
-        SQLITE_TARGET_LOOKUP_BIND_BATCH_SIZE,
-    )) {
+    const targetChunks = chunks(targets, SQLITE_TARGET_LOOKUP_BIND_BATCH_SIZE)
+    for (const [index, targetChunk] of targetChunks.entries()) {
         const rows = await loadTargetRetrievalDocuments(targetChunk)
         await embedRetrievalDocumentRows(
             provider,
             rows,
             createdAt,
             state,
+            { current: index + 1, total: targetChunks.length },
             options,
         )
     }
@@ -170,6 +182,7 @@ async function embedRetrievalDocumentRows(
     rows: RetrievalDocumentRow[],
     createdAt: string,
     state: EmbeddingRunState,
+    vectorIndexBatch: VectorIndexBatch,
     options: {
         onProgress?: ExtractionProgressReporter
     } = {},
@@ -325,7 +338,50 @@ async function embedRetrievalDocumentRows(
         })
     }
 
-    await upsertVectorIndexTargets(vectorIndexTargets)
+    await syncVectorIndexTargets(vectorIndexTargets, state, vectorIndexBatch, {
+        onProgress: options.onProgress,
+    })
+}
+
+async function syncVectorIndexTargets(
+    targets: VectorIndexTarget[],
+    state: EmbeddingRunState,
+    batch: VectorIndexBatch,
+    options: {
+        onProgress?: ExtractionProgressReporter
+    },
+): Promise<void> {
+    if (targets.length === 0) {
+        return
+    }
+
+    options.onProgress?.({
+        batchCurrent: batch.current,
+        batchSize: targets.length,
+        batchTotal: batch.total,
+        current: state.processedCount,
+        embeddedCount: state.embeddedCount,
+        message: `Syncing vector index: batch ${batch.current}/${batch.total}, writing ${targets.length} vectors...`,
+        phase: 'embeddings',
+        reusedCount: state.reusedCount,
+        stage: 'index',
+        status: 'start',
+        total: state.total,
+    })
+    await upsertVectorIndexTargets(targets)
+    options.onProgress?.({
+        batchCurrent: batch.current,
+        batchSize: targets.length,
+        batchTotal: batch.total,
+        current: state.processedCount,
+        embeddedCount: state.embeddedCount,
+        message: `Synced vector index: batch ${batch.current}/${batch.total}, wrote ${targets.length} vectors`,
+        phase: 'embeddings',
+        reusedCount: state.reusedCount,
+        stage: 'index',
+        status: 'done',
+        total: state.total,
+    })
 }
 
 function embeddingRunState(

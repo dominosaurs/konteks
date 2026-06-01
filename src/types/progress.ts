@@ -15,6 +15,9 @@ type ExtractionProgressPhase =
 type ExtractionProgressStatus = 'done' | 'progress' | 'start'
 
 export type ExtractionProgressEvent = {
+    batchCurrent?: number
+    batchSize?: number
+    batchTotal?: number
     sectionCount?: number
     current?: number
     downloadFile?: string
@@ -28,7 +31,7 @@ export type ExtractionProgressEvent = {
     path?: string
     phase: ExtractionProgressPhase
     parserCount?: number
-    stage?: 'embed' | 'prepare'
+    stage?: 'embed' | 'index' | 'prepare'
     reusedCount?: number
     status: ExtractionProgressStatus
     total?: number
