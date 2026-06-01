@@ -12,7 +12,13 @@ type ProjectMemoryProgressReporter = {
     summary(result: ExtractProjectResponse): void
 }
 
-export default function createProjectMemoryProgressReporter(): ProjectMemoryProgressReporter {
+type ProjectMemoryProgressReporterOptions = {
+    workerFileDescriptor?: false | number
+}
+
+export default function createProjectMemoryProgressReporter(
+    options: ProjectMemoryProgressReporterOptions = {},
+): ProjectMemoryProgressReporter {
     let printedDocumentLine = false
     let printedPreparation = false
     let generatedSummary = false
@@ -20,8 +26,14 @@ export default function createProjectMemoryProgressReporter(): ProjectMemoryProg
     let sectionCount = 0
     let modelPercent: number | undefined
     let vectorIndexSyncLines: [string, string] | undefined
-    const inline = createAnimatedInlineProgress(value =>
-        consoleOutput.writeError(value),
+    const workerFileDescriptor =
+        options.workerFileDescriptor === false
+            ? undefined
+            : (options.workerFileDescriptor ??
+              consoleOutput.stderrFileDescriptor())
+    const inline = createAnimatedInlineProgress(
+        value => consoleOutput.writeError(value),
+        { workerFileDescriptor },
     )
     const text = createTuiText(consoleOutput.colorPalette)
 
