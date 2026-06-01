@@ -1,6 +1,7 @@
 import { visibleLength } from './text'
 
 export type InlineProgress = {
+    clear(): void
     complete(output: string): void
     done(): void
     hasLine(): boolean
@@ -13,6 +14,14 @@ export default function createInlineProgress(
     let lastLineLength = 0
 
     return {
+        clear() {
+            if (lastLineLength === 0) {
+                return
+            }
+
+            write(`\r${' '.repeat(lastLineLength)}\r`)
+            lastLineLength = 0
+        },
         complete(output) {
             writeLine(output)
             write('\n')

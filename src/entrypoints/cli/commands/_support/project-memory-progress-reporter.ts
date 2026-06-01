@@ -86,6 +86,24 @@ export default function createProjectMemoryProgressReporter(): ProjectMemoryProg
                 return
             }
 
+            if (
+                event.phase === 'embeddings' &&
+                event.stage === 'index' &&
+                event.status === 'start'
+            ) {
+                printVectorIndexSyncStart(event)
+                return
+            }
+
+            if (
+                event.phase === 'embeddings' &&
+                event.stage === 'index' &&
+                event.status === 'done'
+            ) {
+                inline.clear()
+                return
+            }
+
             if (event.phase === 'embeddings' && event.status === 'done') {
                 printVectorProgress({
                     ...event,
@@ -144,6 +162,13 @@ export default function createProjectMemoryProgressReporter(): ProjectMemoryProg
         }
 
         writeProgress(message)
+    }
+
+    function printVectorIndexSyncStart(event: ExtractionProgressEvent): void {
+        const current = event.current ?? 0
+        const total = event.total ?? current
+        inline.complete(pausedVectorLine(current, total))
+        writeProgress(vectorIndexSyncMessage(event))
     }
 
     function printPreparation(event: ExtractionProgressEvent): void {
@@ -230,6 +255,22 @@ export default function createProjectMemoryProgressReporter(): ProjectMemoryProg
         const moduleCount = Math.max(0, documentCount - sectionCount)
 
         return `Extracted ${text.count(moduleCount)} modules and ${text.count(sectionCount)} sections from ${text.count(fileCount)} files`
+    }
+
+    function pausedVectorLine(current: number, total: number): string {
+        return `${consoleOutput.colorPalette.warning('⏸')} ${text.count(current)}/${text.count(total)} vectors indexed`
+    }
+
+    function vectorIndexSyncMessage(event: ExtractionProgressEvent): string {
+        if (
+            event.batchCurrent !== undefined &&
+            event.batchTotal !== undefined &&
+            event.batchSize !== undefined
+        ) {
+            return `Syncing vector index: batch ${event.batchCurrent}/${event.batchTotal}, writing ${text.count(event.batchSize)} vectors...`
+        }
+
+        return event.message ?? 'Syncing vector index...'
     }
 }
 

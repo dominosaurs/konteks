@@ -19,6 +19,7 @@ import { extractProject } from '@/modules/extraction/extract-project'
 import { loadProjectContext } from '@/modules/project/context'
 import { mkdir, rm } from '@/support/file-manager'
 import type { EmbeddingProviderContract } from '@/types/embedding-provider'
+import type { ExtractionProgressEvent } from '@/types/progress'
 import FakeEmbeddingProvider from '../../../fake/fake-embedding-provider'
 
 const tempDirs: string[] = []
@@ -205,6 +206,7 @@ describe('vector index', () => {
         await makeTempProject()
         const db = await getDb()
         const updatedAt = new Date().toISOString()
+        const progressEvents: ExtractionProgressEvent[] = []
         await db.insert(retrievalDocuments).values(
             Array.from({ length: 300 }, (_, index) => ({
                 embeddingHash: `document-hash-${index}`,
@@ -222,6 +224,11 @@ describe('vector index', () => {
             new FakeEmbeddingProvider(),
             ['section'],
             updatedAt,
+            {
+                onProgress(event) {
+                    progressEvents.push(event)
+                },
+            },
         )
 
         expect(result).toEqual({ embeddedCount: 300, reusedCount: 0 })
@@ -237,6 +244,43 @@ describe('vector index', () => {
                 .from(vectorIndexEntries)
                 .where(eq(vectorIndexEntries.targetType, 'section')),
         ).toHaveLength(300)
+        expect(
+            progressEvents.filter(
+                event =>
+                    event.phase === 'embeddings' && event.stage === 'index',
+            ),
+        ).toMatchObject([
+            {
+                batchCurrent: 1,
+                batchSize: 300,
+                batchTotal: 1,
+                current: 300,
+                status: 'start',
+                total: 300,
+            },
+            {
+                batchCurrent: 1,
+                batchSize: 300,
+                batchTotal: 1,
+                current: 300,
+                status: 'done',
+                total: 300,
+            },
+        ])
+        const indexStart = progressEvents.findIndex(
+            event =>
+                event.phase === 'embeddings' &&
+                event.stage === 'index' &&
+                event.status === 'start',
+        )
+        const lastEmbedProgress = lastIndexWhere(
+            progressEvents,
+            event =>
+                event.phase === 'embeddings' &&
+                event.stage === 'embed' &&
+                event.status === 'progress',
+        )
+        expect(indexStart).toBeGreaterThan(lastEmbedProgress)
     })
 
     it('repairs vector metadata hash mismatches with equal row counts', async () => {
@@ -335,4 +379,17 @@ function useMissingVectorTableConnection(): void {
 
 async function waitForVectorIndexRepairs(): Promise<void> {
     await globalThis.__konteksWaitForVectorIndexRepairsForTests?.()
+}
+
+function lastIndexWhere<T>(
+    items: T[],
+    predicate: (item: T) => boolean,
+): number {
+    for (let index = items.length - 1; index >= 0; index -= 1) {
+        const item = items[index]
+        if (item !== undefined && predicate(item)) {
+            return index
+        }
+    }
+    return -1
 }
