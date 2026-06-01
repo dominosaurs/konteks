@@ -20,9 +20,8 @@ export default function createProjectMemoryProgressReporter(): ProjectMemoryProg
     let sectionCount = 0
     let modelPercent: number | undefined
     let vectorIndexSyncLines: [string, string] | undefined
-    const inline = createAnimatedInlineProgress(
-        value => consoleOutput.writeError(value),
-        { isEnabled: consoleOutput.stderrIsInteractive() },
+    const inline = createAnimatedInlineProgress(value =>
+        consoleOutput.writeError(value),
     )
     const text = createTuiText(consoleOutput.colorPalette)
 
