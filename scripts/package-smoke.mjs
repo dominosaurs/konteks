@@ -81,12 +81,12 @@ async function installPackage() {
     const commands = {
         bun: ['bun', 'add', tarballPath],
         npm: ['npm', 'install', '--no-audit', '--fund=false', tarballPath],
-        pnpm: ['pnpm', 'add', tarballPath],
+        pnpm: ['pnpm', 'add', '--ignore-scripts', tarballPath],
         yarn: ['yarn', 'add', tarballPath],
     }
 
     const [command, ...args] = commands[manager]
-    const result = await run(command, args)
+    const result = await run(command, args, { isolatedHome: false })
 
     if (result.exitCode !== 0) {
         throw new Error(
@@ -112,7 +112,7 @@ async function assertInstalledBin() {
 }
 
 async function expectCommand({ args, expectedOutput, name, success = true }) {
-    const result = await run(cliPath, args)
+    const result = await run(cliPath, args, { isolatedHome: true })
     const expectedExitCode = success ? 0 : 1
 
     if (result.exitCode !== expectedExitCode) {
@@ -141,13 +141,13 @@ async function expectCommand({ args, expectedOutput, name, success = true }) {
     console.log(`${manager}: ${name}`)
 }
 
-async function run(command, args) {
+async function run(command, args, options = { isolatedHome: true }) {
     const child = spawn(command, args, {
         cwd: projectRoot,
         env: {
             ...process.env,
             CI: '1',
-            HOME: homeDir,
+            ...(options.isolatedHome ? { HOME: homeDir } : {}),
             KONTEKS_MODEL_CACHE_DIR: join(
                 homeDir,
                 '.cache',
