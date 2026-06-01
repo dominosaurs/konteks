@@ -4,6 +4,7 @@ import * as extractorModule from '@/modules/extraction/create-project-extractor'
 import consoleOutput, {
     type ConsoleColorPalette,
 } from '@/support/console-output'
+import stripAnsi from '@/support/strip-ansi'
 import type { ExtractProjectResponse } from '@/types/extraction'
 
 type ConsoleOutputMessage = Parameters<typeof consoleOutput.print>[0]
@@ -272,14 +273,6 @@ describe('RebuildCommand', () => {
             message: ConsoleOutputMessage,
         ): message is (color: ConsoleColorPalette) => string {
             return typeof message === 'function'
-        }
-
-        function stripAnsi(value: string): string {
-            const ansiPattern = new RegExp(
-                `${String.fromCharCode(27)}\\[[0-9;]*m`,
-                'gu',
-            )
-            return value.replaceAll(ansiPattern, '')
         }
     })
 })

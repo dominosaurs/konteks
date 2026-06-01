@@ -2,6 +2,7 @@ import { encode } from '@toon-format/toon'
 import { determineAgent } from '@vercel/detect-agent'
 import type { Command, Help } from 'commander'
 import consoleOutput, { type ConsoleColorPalette } from './console-output'
+import stripAnsi from './strip-ansi'
 
 export async function configureCliHelp(program: Command): Promise<void> {
     const { isAgent } = await determineAgent()
@@ -103,15 +104,6 @@ function isLegendItem(item: AgentHelpEntry): boolean {
         (item.description === 'required' || item.description === 'optional')
     )
 }
-
-function stripAnsi(value: string): string {
-    return value.replace(ansiColorPattern, '')
-}
-
-const ansiColorPattern = new RegExp(
-    `${String.fromCharCode(27)}\\[[0-9;]*m`,
-    'gu',
-)
 
 function applyHelpTheme(helper: Help, color: ConsoleColorPalette): void {
     helper.styleArgumentTerm = argument => color.secondary(argument)
