@@ -30,7 +30,9 @@ export function createTuiText(color: ConsoleColorPalette): TuiText {
 }
 
 export function spinnerFrame(index: number): string {
-    return ['◐', '◓', '◑', '◒'][index % 4] ?? '◐'
+    const frames = ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏']
+
+    return frames[index % frames.length] ?? frames[0] ?? ''
 }
 
 export function visibleLength(value: string): number {
