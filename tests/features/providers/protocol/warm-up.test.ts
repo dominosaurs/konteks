@@ -202,7 +202,7 @@ describe('konteks_warm_up', () => {
 
         const result = await withProjectRoot(projectRoot, () =>
             callKonteksTool('konteks_warm_up', {
-                topic: 'focused recall warm up',
+                focus: ['focused recall warm up'],
             }),
         )
         const text = extractText(result)

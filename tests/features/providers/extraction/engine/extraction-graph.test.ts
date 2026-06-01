@@ -68,7 +68,7 @@ describe('extraction graph', () => {
         ])
 
         const recall = await recallRepositoryMemory({
-            task: 'GraphWidget symbol',
+            focus: ['GraphWidget symbol'],
         })
         expect(recall.graph).toEqual([
             expect.objectContaining({
@@ -136,7 +136,7 @@ describe('extraction graph', () => {
 
         const recall = await withProjectRoot(projectRoot, () =>
             recallRepositoryMemory({
-                task: 'src module alpha',
+                focus: ['src module alpha'],
             }),
         )
         expect(recall.graph).toEqual(
@@ -384,7 +384,7 @@ describe('extraction graph', () => {
 
         const recall = await withProjectRoot(projectRoot, () =>
             recallRepositoryMemory({
-                task: 'graphcycle metadata fixture left pad',
+                focus: ['graphcycle metadata fixture left pad'],
             }),
         )
         expect(recall.graph).toEqual(

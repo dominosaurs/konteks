@@ -153,7 +153,7 @@ Once MCP is configured or compatibility skills are installed, tell the user to s
 /konteks-warm-up
 ```
 
-They can add an optional topic when the next task needs focused context:
+They can add an optional focus when the next task needs focused context:
 
 ```text
 /konteks-warm-up authentication, billing, or deployment
@@ -189,5 +189,5 @@ When everything is ready, leave the user with a short message like:
 ```text
 Konteks is initialized for this project. I configured the MCP server with npx, installed global compatibility skills because this agent does not expose MCP prompts, and verified setup with `konteks-cli status`.
 
-For future fresh sessions, start with `/konteks-warm-up`. Use `/konteks-recall <task>` when you need focused project memory, and run `/konteks-save` before ending a meaningful session.
+For future fresh sessions, start with `/konteks-warm-up`. Use `/konteks-recall <focus>` when you need focused project memory, and run `/konteks-save` before ending a meaningful session.
 ```

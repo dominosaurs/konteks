@@ -4,6 +4,7 @@ import historicalRelations, {
 } from '@/database/actions/historical-relations'
 import { buildRetrievalGraphContext } from '@/database/services/graph-context'
 import searchMemory, {
+    focusToQuery,
     type MemoryRecallInput,
 } from '@/database/services/search-memory'
 import type { EmbeddingProviderContract } from '@/types/embedding-provider'
@@ -24,9 +25,10 @@ export default async function recallRepositoryMemory(
     } = {},
 ): Promise<RecallPackage> {
     return await withTransaction(async () => {
+        const query = focusToQuery(input.focus)
         const memories = await searchMemory(
             {
-                task: input.task,
+                focus: input.focus,
             },
             {
                 embeddingProvider: options.embeddingProvider,
@@ -34,15 +36,12 @@ export default async function recallRepositoryMemory(
                 limit: 20,
             },
         )
-        const graphContext = await buildRetrievalGraphContext(
-            input.task,
-            memories,
-        )
+        const graphContext = await buildRetrievalGraphContext(query, memories)
         const entities = graphContext.entities
 
         const historyItems: RecallHistoryItem[] = []
 
-        if (needsHistory(input.task)) {
+        if (needsHistory(query)) {
             const seenRelations = new Set<string>()
             const relations =
                 entities.length === 1
@@ -75,12 +74,12 @@ export default async function recallRepositoryMemory(
         }
 
         return assembleRecallPackage({
+            focus: input.focus,
             graph: graphContext.graph,
             history: historyItems,
             includeSources: input.includeSources ?? false,
             memories,
             outputBudgetTokens: RECALL_OUTPUT_BUDGET_TOKENS,
-            task: input.task,
         })
     })
 }
@@ -89,9 +88,9 @@ function assembleRecallPackage(input: {
     graph: RecallGraphItem[]
     history: RecallHistoryItem[]
     includeSources: boolean
+    focus: string[]
     memories: MemorySearchResult[]
     outputBudgetTokens: number
-    task: string
 }): RecallPackage {
     const dedupedMemories = dedupeRecallMemories(input.memories)
     const memories = applyTokenBudget(
@@ -108,6 +107,7 @@ function assembleRecallPackage(input: {
             primaryTargets,
             quality,
         }),
+        focus: input.focus,
         graph: input.includeSources ? input.graph : input.graph.slice(0, 6),
         history: input.includeSources
             ? input.history
@@ -116,7 +116,6 @@ function assembleRecallPackage(input: {
         primaryTargets,
         quality,
         sourceCount: dedupedMemories.length,
-        task: input.task,
     }
 }
 

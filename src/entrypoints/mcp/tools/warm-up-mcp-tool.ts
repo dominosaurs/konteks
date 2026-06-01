@@ -17,7 +17,10 @@ import type {
 import BaseMcpTool from './_base-mcp-tool'
 
 const INPUT_ZOD_SCHEMA = z.object({
-    topic: z.string().optional(),
+    focus: z
+        .array(z.string().trim().min(1))
+        .optional()
+        .describe('Short natural-language focus statements for retrieval.'),
 })
 
 type Input = z.output<typeof INPUT_ZOD_SCHEMA>
@@ -46,10 +49,10 @@ export default class WarmUpMcpTool extends BaseMcpTool<Input> {
         const warmUp = limitWarmUpContext(rawWarmUp, 2000)
 
         let recall: RecallPackage | undefined
-        if (input.topic) {
+        if (input.focus && input.focus.length > 0) {
             recall = await recallRepositoryMemory(
                 {
-                    task: input.topic ?? '',
+                    focus: input.focus,
                 },
                 {
                     embeddingProvider,
@@ -100,6 +103,7 @@ function toFocusedRecallOutput(recall: RecallPackage): object {
             memories: recall.memories.length,
             sources: recall.sourceCount,
         },
+        focus: recall.focus,
         memories: recall.memories.slice(0, 6).map(memory =>
             toMemoryOutput(memory, {
                 includeSources: false,
@@ -107,7 +111,6 @@ function toFocusedRecallOutput(recall: RecallPackage): object {
         ),
         primaryTargets: recall.primaryTargets,
         quality: recall.quality,
-        task: recall.task,
     }
 }
 

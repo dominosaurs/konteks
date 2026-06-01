@@ -47,7 +47,7 @@ export type MemorySearchInput = {
 }
 
 export type MemoryRecallInput = {
-    task: string
+    focus: string[]
     includeSources?: boolean
 }
 
@@ -64,7 +64,7 @@ async function searchBoundMemory(
 ): Promise<MemorySearchResult[]> {
     const mode: SearchMode = 'query' in input ? 'search' : 'recall'
     const limit = 'limit' in input ? (input.limit ?? 10) : (options.limit ?? 10)
-    const query = 'query' in input ? input.query : input.task
+    const query = 'query' in input ? input.query : focusToQuery(input.focus)
     const terms = tokenize(query)
     const intent = detectIntent(query)
 
@@ -104,6 +104,13 @@ async function searchBoundMemory(
         .filter(result => allowResult(result, mode, intent))
         .sort(compareSearchResults)
         .slice(0, limit)
+}
+
+export function focusToQuery(focus: string[]): string {
+    return focus
+        .map(item => item.trim())
+        .filter(Boolean)
+        .join('\n')
 }
 
 async function searchRetrievalDocuments(

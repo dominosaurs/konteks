@@ -6,7 +6,11 @@ import BaseMcpTool from './_base-mcp-tool'
 
 const INPUT_SCHEMA = z.object({
     limit: z.number().int().min(1).max(50).optional(),
-    query: z.string().min(1, 'query is required'),
+    query: z
+        .string()
+        .trim()
+        .min(1, 'query is required')
+        .describe('Direct natural-language or keyword search query.'),
 })
 
 type Input = z.output<typeof INPUT_SCHEMA>

@@ -10,8 +10,11 @@ import type {
 import BaseMcpTool from './_base-mcp-tool'
 
 const INPUT_SCHEMA = z.object({
+    focus: z
+        .array(z.string().trim().min(1))
+        .min(1, 'focus is required')
+        .describe('Short natural-language focus statements for retrieval.'),
     includeSources: z.boolean().optional(),
-    task: z.string().min(1, 'task is required'),
 })
 
 type Input = z.output<typeof INPUT_SCHEMA>
@@ -55,6 +58,7 @@ function toRecallOutput(input: {
             history: recall.history.length,
             memories: recall.memories.length,
         },
+        focus: recall.focus,
         graphEvidence: recall.graph.slice(0, 6).map(toGraphEvidenceOutput),
         historyEvidence: recall.history
             .slice(0, 6)
@@ -65,7 +69,6 @@ function toRecallOutput(input: {
             }),
         ),
         primaryTargets: recall.primaryTargets,
-        task: recall.task,
     }
 }
 

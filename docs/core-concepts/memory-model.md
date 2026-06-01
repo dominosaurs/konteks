@@ -78,7 +78,7 @@ There are two retrieval voices:
 
 This surface answers:
 
-* Which memories match the task text?
+* Which memories match the focus text?
 * Which memories are semantically close to the task?
 * Which candidates should be ranked higher before recall assembles the final context?
 

@@ -78,10 +78,10 @@ afterEach(() => {
 })
 
 describe('commands/mcp/tools', () => {
-    it('prompts required string input and passes it to the selected tool', async () => {
+    it('prompts required array input and passes it to the selected tool', async () => {
         selectResults.push('konteks_recall')
         confirmResults.push(true, false)
-        inputResults.push('Explain the CLI command shape')
+        inputResults.push('["Explain the CLI command shape"]')
         const tool = getTool('konteks_recall')
         const handleSpy = spyOn(tool, 'handle').mockImplementation(
             async () => ({
@@ -93,11 +93,11 @@ describe('commands/mcp/tools', () => {
 
         expect(inputCalls).toEqual([
             expect.objectContaining({
-                message: 'task (string, required):',
+                message: 'focus (JSON, required):',
             }),
         ])
         expect(handleSpy).toHaveBeenCalledWith({
-            task: 'Explain the CLI command shape',
+            focus: ['Explain the CLI command shape'],
         })
     })
 
@@ -116,7 +116,7 @@ describe('commands/mcp/tools', () => {
 
         expect(inputCalls[0]).toEqual(
             expect.objectContaining({
-                message: 'topic (string, optional - leave blank to omit):',
+                message: 'focus (JSON, optional - leave blank to omit):',
             }),
         )
         expect(handleSpy).toHaveBeenCalledWith({})
@@ -125,7 +125,7 @@ describe('commands/mcp/tools', () => {
     it('can omit optional boolean fields', async () => {
         selectResults.push('konteks_recall', SELECT_OMIT)
         confirmResults.push(true, false)
-        inputResults.push('Find relevant context')
+        inputResults.push('["Find relevant context"]')
         const tool = getTool('konteks_recall')
         const handleSpy = spyOn(tool, 'handle').mockImplementation(
             async () => ({
@@ -146,7 +146,7 @@ describe('commands/mcp/tools', () => {
             }),
         )
         expect(handleSpy).toHaveBeenCalledWith({
-            task: 'Find relevant context',
+            focus: ['Find relevant context'],
         })
     })
 
@@ -211,7 +211,7 @@ describe('commands/mcp/tools', () => {
     it('retries prompts when the final schema validation fails', async () => {
         selectResults.push('konteks_recall', SELECT_OMIT, SELECT_OMIT)
         confirmResults.push(true, false)
-        inputResults.push('', 'Valid task')
+        inputResults.push('{}', '["Valid task"]')
         const tool = getTool('konteks_recall')
         const handleSpy = spyOn(tool, 'handle').mockImplementation(
             async () => ({
@@ -228,7 +228,7 @@ describe('commands/mcp/tools', () => {
         expect(inputCalls).toHaveLength(2)
         expect(handleSpy).toHaveBeenCalledTimes(1)
         expect(handleSpy).toHaveBeenCalledWith({
-            task: 'Valid task',
+            focus: ['Valid task'],
         })
     })
 

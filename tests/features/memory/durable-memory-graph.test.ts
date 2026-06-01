@@ -68,7 +68,7 @@ describe('durable memory graph projection', () => {
         )
 
         const recall = await recallRepositoryMemory({
-            task: 'cycle five durable policy graph evidence',
+            focus: ['cycle five durable policy graph evidence'],
         })
         expect(recall.graph).toEqual(
             expect.arrayContaining([
@@ -289,8 +289,8 @@ describe('durable memory graph projection', () => {
         )
 
         const recall = await recallRepositoryMemory({
+            focus: ['previous decision history for durable policy replacement'],
             includeSources: true,
-            task: 'previous decision history for durable policy replacement',
         })
         expect(recall.history).toEqual(
             expect.arrayContaining([
@@ -357,8 +357,8 @@ describe('durable memory graph projection', () => {
         )
 
         const recall = await recallRepositoryMemory({
+            focus: ['invalidated relation history for durable policy'],
             includeSources: true,
-            task: 'invalidated relation history for durable policy',
         })
         expect(recall.history).toEqual(
             expect.arrayContaining([

@@ -28,7 +28,7 @@ Warm up refreshes changed files incrementally. Run `konteks rebuild` when you ne
 /konteks-warm-up
 ```
 
-If the next task already needs specific memory, append an optional topic so the agent can load focused supplemental memory after the project briefing:
+If the next task already needs specific memory, append an optional focus so the agent can load focused supplemental memory after the project briefing:
 
 ```text
 /konteks-warm-up security, authentication, and authorization

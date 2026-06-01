@@ -1,12 +1,12 @@
 # Recall & Retrieval: Contextual Synthesis
 
-Recall is the moment Konteks turns stored memory back into working context. The user gives a task, and Konteks gathers the most relevant project evidence into a compact package an agent can use immediately.
+Recall is the moment Konteks turns stored memory back into working context. The user gives a task focus, and Konteks gathers the most relevant project evidence into a compact package an agent can use immediately.
 
-Recall is not the same thing as search. Search finds matching records. Recall chooses, ranks, trims, and explains context for a specific task.
+Recall is not the same thing as search. Search finds matching records. Recall chooses, ranks, trims, and explains context for a specific focus.
 
 ```mermaid
 graph LR
-    Task[Task] --> Terms[Read the Task]
+    Task[Focus] --> Terms[Read the Focus]
     Terms --> Retrieval[Search Retrieval Memory]
     Retrieval --> Score[Score and Rank]
     Terms --> Entities[Find Matching Entities]
@@ -18,13 +18,13 @@ graph LR
     Prune --> Package
 ```
 
-## 1. The Request: Read the Task
+## 1. The Request: Read the Focus
 
-Recall begins with the task text. Konteks breaks the task into searchable terms and uses those terms to infer intent.
+Recall begins with one or more natural-language focus statements. Konteks breaks the focus text into searchable terms and uses those terms to infer intent.
 
 Intent matters because not every task needs the same shape of context. A question about documentation, package setup, implementation code, tests, prior decisions, or historical changes should not pull the same evidence with the same priority.
 
-If the task has no useful searchable terms, recall returns no evidence instead of guessing.
+If the focus has no useful searchable terms, recall returns no evidence instead of guessing.
 
 ## 2. The First Pass: Search Retrieval Memory
 
@@ -48,7 +48,7 @@ Every candidate is weighed before it reaches the final package.
 
 The score reflects several signals:
 
-* **Lexical match**: whether the task terms appear in the candidate.
+* **Lexical match**: whether the focus terms appear in the candidate.
 * **Semantic closeness**: whether compatible embeddings suggest related meaning.
 * **Confidence**: how trustworthy the memory is.
 * **Recency**: whether the memory is fresh enough to matter.
@@ -59,11 +59,11 @@ Konteks then prunes candidates so one group of similar results does not drown ou
 
 ## 5. The Map: Expand Relations
 
-Recall also asks whether the task matches known entities. If it does, Konteks can expand from those entities to nearby relations.
+Recall also asks whether the focus matches known entities. If it does, Konteks can expand from those entities to nearby relations.
 
 This is the map layer of recall. It helps the agent see surrounding context: related components, connected concepts, and nearby decisions. When graph data is sparse, recall still works from retrieval memory alone.
 
-Graph expansion is retrieval-led: direct text hits remain the primary signal, and graph context can boost or explain related candidates when connected evidence exists. If the task asks about prior work, replacements, migrations, or why something changed, recall can also include historical relation evidence from superseded or invalidated graph relations.
+Graph expansion is retrieval-led: direct text hits remain the primary signal, and graph context can boost or explain related candidates when connected evidence exists. If the focus asks about prior work, replacements, migrations, or why something changed, recall can also include historical relation evidence from superseded or invalidated graph relations.
 
 ## 6. The Assembly: Build the Recall Package
 
