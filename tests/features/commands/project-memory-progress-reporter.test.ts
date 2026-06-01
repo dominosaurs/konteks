@@ -1,6 +1,7 @@
 import { describe, expect, it, spyOn } from 'bun:test'
 import createProjectMemoryProgressReporter from '@/entrypoints/cli/commands/_support/project-memory-progress-reporter'
 import consoleOutput from '@/support/console-output'
+import stripAnsi from '@/support/strip-ansi'
 
 describe('project memory progress reporter', () => {
     it('shows transient vector index sync progress at batch boundaries', () => {
@@ -77,11 +78,3 @@ describe('project memory progress reporter', () => {
         }
     })
 })
-
-function stripAnsi(value: string): string {
-    const ansiPattern = new RegExp(
-        `${String.fromCharCode(27)}\\[[0-9;]*m`,
-        'gu',
-    )
-    return value.replaceAll(ansiPattern, '')
-}

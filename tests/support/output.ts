@@ -1,6 +1,7 @@
 import consoleOutput, {
     type ConsoleColorPalette,
 } from '@/support/console-output'
+import stripAnsi from '@/support/strip-ansi'
 
 type ConsoleOutputMessage = Parameters<typeof consoleOutput.print>[0]
 
@@ -10,13 +11,7 @@ export function renderStdoutMessage(message: ConsoleOutputMessage): string {
         : String(message)
 }
 
-export function stripAnsi(value: string): string {
-    const ansiPattern = new RegExp(
-        `${String.fromCharCode(27)}\\[[0-9;]*m`,
-        'gu',
-    )
-    return value.replaceAll(ansiPattern, '')
-}
+export { stripAnsi }
 
 function isOutputFormatter(
     message: ConsoleOutputMessage,

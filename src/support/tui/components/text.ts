@@ -1,4 +1,5 @@
 import type { ConsoleColorPalette } from '@/support/console-output'
+import stripAnsi from '@/support/strip-ansi'
 
 export type TuiText = {
     checkLine(message: string): string
@@ -33,9 +34,5 @@ export function spinnerFrame(index: number): string {
 }
 
 export function visibleLength(value: string): number {
-    const ansiPattern = new RegExp(
-        `${String.fromCharCode(27)}\\[[0-9;]*m`,
-        'gu',
-    )
-    return value.replaceAll(ansiPattern, '').length
+    return stripAnsi(value).length
 }

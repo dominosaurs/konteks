@@ -9,6 +9,7 @@ import {
 } from '@/support/console-output/_support/color-palette'
 import hexToRgb from '@/support/console-output/_support/hex-to-rgb'
 import { mkdir, rm } from '@/support/file-manager'
+import stripAnsi from '@/support/strip-ansi'
 import FakeEmbeddingProvider from '../../fake/fake-embedding-provider'
 
 const checkboxCalls: unknown[] = []
@@ -413,14 +414,6 @@ async function withInteractiveTerminal<T>(operation: () => Promise<T>) {
         stdinSpy.mockRestore()
         stderrSpy.mockRestore()
     }
-}
-
-function stripAnsi(value: string): string {
-    const ansiPattern = new RegExp(
-        `${String.fromCharCode(27)}\\[[0-9;]*m`,
-        'gu',
-    )
-    return value.replaceAll(ansiPattern, '')
 }
 
 function ansiForeground(hex: string): string {
