@@ -3,7 +3,7 @@ import consoleOutput, {
 } from '@/support/console-output'
 import { formatBytes } from '@/support/format/number'
 import {
-    createInlineProgress,
+    createAnimatedInlineProgress,
     createTuiText,
     spinnerFrame,
 } from '@/support/tui/components'
@@ -16,12 +16,12 @@ export default function createExtractionProgressReporter(): {
 } {
     let activeStep = ''
     let lastStep = ''
-    let spinnerIndex = 0
     let lastCompactMessage = ''
     const downloadBuckets = new Map<string, number>()
     const isTty = consoleOutput.stderrIsInteractive()
-    const inline = createInlineProgress(value =>
-        consoleOutput.writeError(value),
+    const inline = createAnimatedInlineProgress(
+        value => consoleOutput.writeError(value),
+        { isEnabled: isTty },
     )
     const text = createTuiText(consoleOutput.colorPalette)
 
@@ -72,13 +72,7 @@ export default function createExtractionProgressReporter(): {
             }
 
             if (event.status === 'progress') {
-                spinnerIndex += 1
                 const compact = compactMessage(event)
-                const output = formatInlineProgress(
-                    event,
-                    spinnerIndex,
-                    consoleOutput.colorPalette,
-                )
                 if (
                     event.phase === 'preparation' &&
                     compact === lastCompactMessage &&
@@ -86,7 +80,13 @@ export default function createExtractionProgressReporter(): {
                 ) {
                     return
                 }
-                inline.write(output)
+                inline.writeAnimated(spinnerIndex =>
+                    formatInlineProgress(
+                        event,
+                        spinnerIndex,
+                        consoleOutput.colorPalette,
+                    ),
+                )
                 lastCompactMessage = compact
                 return
             }
