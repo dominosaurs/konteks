@@ -16,10 +16,7 @@ export async function updateChangedProjectMemorySilently(
     context: McpProjectContext,
     embeddingProvider?: EmbeddingProviderContract,
 ): Promise<SaveProjectUpdate | undefined> {
-    if (
-        !context.configExists ||
-        !(await readExtractionManifest(context.memoryDir))
-    ) {
+    if (!(await readExtractionManifest(context.memoryDir))) {
         return undefined
     }
 

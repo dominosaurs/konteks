@@ -42,7 +42,9 @@ export default class WarmUpMcpTool extends BaseMcpTool<Input> {
 
     public async handle(input: Input): Promise<object> {
         const context = await loadMcpProjectContext()
-        const embeddingProvider = sharedEmbeddingProvider()
+        const embeddingProvider = context.configExists
+            ? sharedEmbeddingProvider()
+            : undefined
         await updateChangedProjectMemorySilently(context, embeddingProvider)
 
         const rawWarmUp = await readWarmUpContext(context)
