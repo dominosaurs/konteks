@@ -189,6 +189,6 @@ function readStream(stream) {
 function waitForExit(child) {
     return new Promise((resolve, reject) => {
         child.on('error', reject)
-        child.on('exit', code => resolve(code))
+        child.on('exit', code => resolve(code ?? 1))
     })
 }
