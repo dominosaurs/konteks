@@ -1,6 +1,5 @@
 import { createHash } from 'node:crypto'
 import { readFile, writeFile } from 'node:fs/promises'
-import { createRequire } from 'node:module'
 import * as os from 'node:os'
 import { join } from 'node:path'
 import GRAMMAR_REGISTRY, {
@@ -8,6 +7,10 @@ import GRAMMAR_REGISTRY, {
 } from '@/assets/grammar-registry'
 import { pathExists } from '@/modules/project/context'
 import { mkdir } from '@/support/file-manager'
+import {
+    type BundledGrammarRuntimeAssetId,
+    runtimeAssetPath,
+} from '@/support/runtime-assets'
 import type { ExtractionProgressReporter } from '@/types/progress'
 import type { Project } from '@/types/project'
 
@@ -29,39 +32,34 @@ type GrammarCacheManifest = {
 }
 
 type BundledGrammarDefinition = {
+    assetId: BundledGrammarRuntimeAssetId
     displayName: string
     extensions: string[]
     id: string
-    wasmPath: string
 }
 
 type GrammarMatch = GrammarDefinition | BundledGrammarDefinition
 
-const require = createRequire(import.meta.url)
 const registry = loadGrammarRegistry(GRAMMAR_REGISTRY)
 
 const bundledGrammars: BundledGrammarDefinition[] = [
     {
+        assetId: 'tree-sitter-json',
         displayName: 'JSON',
         extensions: ['.json', '.jsonc'],
         id: 'json',
-        wasmPath: require.resolve('tree-sitter-json/tree-sitter-json.wasm'),
     },
     {
+        assetId: 'tree-sitter-yaml',
         displayName: 'YAML',
         extensions: ['.yaml', '.yml'],
         id: 'yaml',
-        wasmPath: require.resolve(
-            '@tree-sitter-grammars/tree-sitter-yaml/tree-sitter-yaml.wasm',
-        ),
     },
     {
+        assetId: 'tree-sitter-toml',
         displayName: 'TOML',
         extensions: ['.toml'],
         id: 'toml',
-        wasmPath: require.resolve(
-            '@tree-sitter-grammars/tree-sitter-toml/tree-sitter-toml.wasm',
-        ),
     },
 ]
 
@@ -143,7 +141,10 @@ export async function initTreeSitterWithSelectedGrammars(
     const loaded: string[] = []
 
     for (const [index, definition] of bundled.entries()) {
-        await engine.loadLanguage(definition.id, definition.wasmPath)
+        await engine.loadLanguage(
+            definition.id,
+            await runtimeAssetPath(definition.assetId),
+        )
         loaded.push(definition.id)
         options.onProgress?.({
             current: index + 1,
