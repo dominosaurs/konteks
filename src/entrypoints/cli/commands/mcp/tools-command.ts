@@ -28,7 +28,7 @@ export default class ToolsCommand extends BaseCommand<
 
     public override readonly options = [
         {
-            description: 'Print the tool result as JSON instead of TOON.',
+            description: 'Print the tool result as JSON.',
             flags: '--json',
         },
     ]

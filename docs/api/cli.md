@@ -51,7 +51,7 @@ These commands inspect MCP behavior from the terminal without registering an age
 | :--- | :--- |
 | `konteks mcp tools` | Choose an MCP tool interactively, review its schema, enter input values, and run it. |
 | `konteks mcp tools <tool>` | Review and run one MCP tool by name. |
-| `konteks mcp tools --json <tool>` | Print the tool result as JSON instead of TOON. |
+| `konteks mcp tools --json <tool>` | Print the tool result as JSON. |
 
 > [!IMPORTANT]
 > `konteks mcp tools` runs the selected MCP tool after confirmation. Optional text, number, and JSON fields can be left blank to omit them. Complex fields such as arrays and objects are entered as JSON text.

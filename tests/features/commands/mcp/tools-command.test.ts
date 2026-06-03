@@ -265,7 +265,7 @@ describe('commands/mcp/tools', () => {
             name: '[tool]',
         })
         expect(command.options).toContainEqual({
-            description: 'Print the tool result as JSON instead of TOON.',
+            description: 'Print the tool result as JSON.',
             flags: '--json',
         })
     })
