@@ -154,6 +154,55 @@ describe('vector index', () => {
         ).resolves.toMatchObject([{ targetId: 'section-272' }])
     })
 
+    it('keeps exact fallback results capped and sorted by nearest distance', async () => {
+        await makeTempProject()
+        const db = await getDb()
+        const createdAt = new Date().toISOString()
+        const rows = Array.from({ length: 300 }, (_, index) => {
+            const vector =
+                index === 11
+                    ? new Float32Array([0.8, 0.6, 0, 0])
+                    : index === 172
+                      ? new Float32Array([1, 0, 0, 0])
+                      : index === 299
+                        ? new Float32Array([0.9, 0.4358899, 0, 0])
+                        : new Float32Array([0, 1, 0, 0])
+            return {
+                createdAt,
+                dimensions: 4,
+                dtype: 'float32',
+                embeddingHash: `fallback-top-k-hash-${index}`,
+                model: 'fake/fallback-top-k',
+                normalized: 1,
+                targetId: `section-${index.toString().padStart(3, '0')}`,
+                targetType: 'section' as const,
+                vectorBlob: toBlob(vector),
+            }
+        })
+        await db.insert(targetEmbeddings).values(rows)
+        useMissingVectorTableConnection()
+
+        const results = await searchVectorIndex({
+            dimensions: 4,
+            limit: 3,
+            model: 'fake/fallback-top-k',
+            vector: new Float32Array([1, 0, 0, 0]),
+        })
+
+        expect(results.map(result => result.targetId)).toEqual([
+            'section-172',
+            'section-299',
+            'section-011',
+        ])
+        expect(results).toHaveLength(3)
+        const [first, second, third] = results
+        if (!first || !second || !third) {
+            throw new Error('expected three vector search results')
+        }
+        expect(first.distance).toBeLessThanOrEqual(second.distance)
+        expect(second.distance).toBeLessThanOrEqual(third.distance)
+    })
+
     it('falls back immediately and repairs partial sqlite-vec metadata', async () => {
         await makeTempProject()
         const db = await getDb()
