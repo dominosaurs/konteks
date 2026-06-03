@@ -1,6 +1,12 @@
 import { defineConfig } from 'tsup'
 
 export default defineConfig({
+    banner: {
+        js: [
+            "import { createRequire as __konteksCreateRequire } from 'node:module'",
+            'const require = __konteksCreateRequire(import.meta.url)',
+        ].join('\n'),
+    },
     clean: true,
     entry: ['src/main.ts'],
     esbuildOptions: options => {
