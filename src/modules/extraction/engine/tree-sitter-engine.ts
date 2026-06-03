@@ -1,4 +1,5 @@
 import { Language, type Node, Parser, Query } from 'web-tree-sitter'
+import { runtimeAssetPath } from '@/support/runtime-assets'
 import { getGrammarForPath } from './grammar-loader'
 
 type CodeSymbol = {
@@ -26,7 +27,11 @@ export default class TreeSitterEngine {
             return
         }
 
-        await Parser.init()
+        const wasmPath = await runtimeAssetPath('web-tree-sitter')
+        await Parser.init({
+            locateFile: (scriptName: string) =>
+                scriptName === 'web-tree-sitter.wasm' ? wasmPath : scriptName,
+        })
         this.parser = new Parser()
     }
 
