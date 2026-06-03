@@ -2,6 +2,8 @@ import { afterEach, describe, expect, it } from 'bun:test'
 import { mkdtemp, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
+import { readExtractionManifest } from '@/modules/extraction/engine/manifest'
+import { extractProject } from '@/modules/extraction/extract-project'
 import {
     loadMcpProjectContext,
     updateChangedProjectMemorySilently,
@@ -65,5 +67,42 @@ describe('memory/runtime', () => {
         await expect(
             updateChangedProjectMemorySilently(context),
         ).resolves.toBeUndefined()
+    })
+
+    it('updates changed project memory when a manifest exists without config', async () => {
+        const projectRoot = await mkdtemp(join(tmpdir(), 'konteks-runtime-'))
+        tempDirs.push(projectRoot)
+        await mkdir(join(projectRoot, 'src'))
+        await writeFile(
+            join(projectRoot, 'package.json'),
+            '{"name":"fixture"}\n',
+        )
+        await writeFile(
+            join(projectRoot, 'src', 'index.txt'),
+            'export const first = true\n',
+        )
+        const context = await withWorkingDirectory(projectRoot, () =>
+            loadMcpProjectContext(),
+        )
+        await withWorkingDirectory(projectRoot, () =>
+            extractProject(context, 'full'),
+        )
+        await writeFile(
+            join(projectRoot, 'src', 'later.txt'),
+            'export const later = true\n',
+        )
+
+        await expect(
+            withWorkingDirectory(projectRoot, () =>
+                updateChangedProjectMemorySilently(context),
+            ),
+        ).resolves.toMatchObject({
+            updatedFilePaths: ['src/later.txt'],
+        })
+        await expect(
+            readExtractionManifest(context.memoryDir),
+        ).resolves.toMatchObject({
+            mode: 'changed',
+        })
     })
 })

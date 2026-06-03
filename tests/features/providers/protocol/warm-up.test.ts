@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it } from 'bun:test'
+import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
 import { mkdtemp, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -35,8 +35,21 @@ async function withProjectRoot<T>(
 
 describe('konteks_warm_up', () => {
     let tempDirs: string[] = []
+    let previousDisableSharedEmbeddingProvider: string | undefined
+
+    beforeEach(() => {
+        previousDisableSharedEmbeddingProvider =
+            process.env.KONTEKS_DISABLE_SHARED_EMBEDDING_PROVIDER
+        process.env.KONTEKS_DISABLE_SHARED_EMBEDDING_PROVIDER = '1'
+    })
 
     afterEach(async () => {
+        if (previousDisableSharedEmbeddingProvider === undefined) {
+            delete process.env.KONTEKS_DISABLE_SHARED_EMBEDDING_PROVIDER
+        } else {
+            process.env.KONTEKS_DISABLE_SHARED_EMBEDDING_PROVIDER =
+                previousDisableSharedEmbeddingProvider
+        }
         for (const dir of tempDirs) {
             await rm(dir)
         }

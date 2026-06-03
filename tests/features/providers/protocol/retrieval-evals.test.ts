@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it } from 'bun:test'
+import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
 import { mkdtemp, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -18,6 +18,7 @@ import type { EmbeddingProviderContract } from '@/types/embedding-provider'
 import FakeEmbeddingProvider from '../../../fake/fake-embedding-provider'
 
 const tempDirs: string[] = []
+let previousDisableSharedEmbeddingProvider: string | undefined
 
 class TopicEmbeddingProvider implements EmbeddingProviderContract {
     public readonly dimensions = 4
@@ -57,10 +58,22 @@ async function withProjectRoot<T>(
     }
 }
 
+beforeEach(() => {
+    previousDisableSharedEmbeddingProvider =
+        process.env.KONTEKS_DISABLE_SHARED_EMBEDDING_PROVIDER
+    process.env.KONTEKS_DISABLE_SHARED_EMBEDDING_PROVIDER = '1'
+})
+
 afterEach(async () => {
     await globalThis.__konteksWaitForVectorIndexRepairsForTests?.()
     globalThis.__konteksEmbeddingProviderForTests = undefined
     globalThis.__konteksVectorIndexConnectionFactoryForTests = undefined
+    if (previousDisableSharedEmbeddingProvider === undefined) {
+        delete process.env.KONTEKS_DISABLE_SHARED_EMBEDDING_PROVIDER
+    } else {
+        process.env.KONTEKS_DISABLE_SHARED_EMBEDDING_PROVIDER =
+            previousDisableSharedEmbeddingProvider
+    }
     await Promise.all(tempDirs.splice(0).map(path => rm(path)))
 })
 
