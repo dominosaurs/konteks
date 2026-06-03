@@ -108,7 +108,7 @@ The project-specific ontology used to organize knowledge into logical scopes (e.
 
 ## TOON
 
-Tagged Object Oriented Notation. A compact, agent-readable text format used for MCP tool output and selected summaries.
+Token-Oriented Object Notation. A compact, agent-readable text format used for MCP tool output and selected summaries. Read more on [toonformat.dev](https://toonformat.dev/guide/getting-started.html).
 
 ## Vector
 
