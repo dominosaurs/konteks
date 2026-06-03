@@ -1,7 +1,11 @@
-.agents/
-.gemini/
-.codex/
 .konteks/
 .specs/
 dist/
 node_modules/
+
+# AI
+.agents/
+.antigravitycli
+.gemini/
+.codex/
+opencode.json

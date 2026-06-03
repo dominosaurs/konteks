@@ -1,4 +1,5 @@
 import z from 'zod'
+import type { SaveMemoriesInput } from '@/database/services/save-memory'
 import { saveMemories } from '@/modules/memory/save-memory'
 import BaseMcpTool from './_base-mcp-tool'
 import memoryKindSchema from './schemas/memory-kind-schema'
@@ -6,13 +7,7 @@ import saveTextSchema from './schemas/save-input-schema'
 
 const saveBatchMemorySchema = z.object({
     content: saveTextSchema,
-    importance: z.union([
-        z.literal(1),
-        z.literal(2),
-        z.literal(3),
-        z.literal(4),
-        z.literal(5),
-    ]),
+    importance: z.number().int().min(1).max(5),
     kind: memoryKindSchema,
     source: z.string().optional(),
     supersedes: z.array(z.string()).optional(),
@@ -26,7 +21,7 @@ const INPUT_SCHEMA = z.object({
         .describe('Structured durable memories to persist.'),
 })
 
-type Input = z.output<typeof INPUT_SCHEMA>
+type Input = SaveMemoriesInput
 
 export default class SaveMemoriesMcpTool extends BaseMcpTool<Input> {
     public readonly annotations = {
