@@ -37,6 +37,31 @@ describe('MCP tools', () => {
         expect(mcpTools.every(tool => tool instanceof BaseMcpTool)).toBe(true)
     })
 
+    it('rejects out-of-range durable memory importance before execution', async () => {
+        const tool = mcpTools.find(
+            item => item.name === 'konteks_save_memories',
+        )
+        if (!tool) {
+            throw new Error('Missing save memories tool.')
+        }
+
+        const callRegisteredTool = registeredHandlerFor(tool)
+
+        await expect(
+            callRegisteredTool({
+                memories: [
+                    {
+                        content: 'Remember this concrete project constraint.',
+                        importance: 6,
+                        kind: 'constraint',
+                    },
+                ],
+            }),
+        ).resolves.toMatchObject({
+            isError: true,
+        })
+    })
+
     it('validates input before executing a tool and formats object output', async () => {
         class FixtureTool extends BaseMcpTool {
             public readonly annotations = {

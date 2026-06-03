@@ -108,13 +108,7 @@ describe('mcp/stdio interface', () => {
                             properties: {
                                 content: { type: 'string' },
                                 importance: {
-                                    anyOf: [
-                                        { const: 1, type: 'number' },
-                                        { const: 2, type: 'number' },
-                                        { const: 3, type: 'number' },
-                                        { const: 4, type: 'number' },
-                                        { const: 5, type: 'number' },
-                                    ],
+                                    type: 'number',
                                 },
                                 kind: {
                                     enum: [
@@ -143,6 +137,12 @@ describe('mcp/stdio interface', () => {
                 required: ['memories'],
                 type: 'object',
             })
+            expect(JSON.stringify(saveMemoriesTool?.inputSchema)).not.toContain(
+                '"anyOf"',
+            )
+            expect(JSON.stringify(saveMemoriesTool?.inputSchema)).not.toContain(
+                '"const"',
+            )
 
             const saveDiaryTool = tools.tools.find(
                 tool => tool.name === 'konteks_save_diary',
