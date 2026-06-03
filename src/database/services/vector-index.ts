@@ -719,25 +719,56 @@ async function exactVectorSearch(input: {
     while (true) {
         const rows = await loadDurableVectorPage(input, cursor, batchSize)
         for (const row of rows) {
-            results.push({
-                distance: cosineDistance(
-                    input.vector,
-                    blobToFloat32Array(row.vector_blob),
-                ),
-                embeddingHash: row.embedding_hash,
-                model: row.model,
-                targetId: row.target_id,
-                targetType: row.target_type,
-            })
-            results.sort((left, right) => left.distance - right.distance)
-            if (results.length > input.limit) {
-                results.pop()
-            }
+            insertNearestVectorResult(
+                results,
+                {
+                    distance: cosineDistance(
+                        input.vector,
+                        blobToFloat32Array(row.vector_blob),
+                    ),
+                    embeddingHash: row.embedding_hash,
+                    model: row.model,
+                    targetId: row.target_id,
+                    targetType: row.target_type,
+                },
+                input.limit,
+            )
         }
         if (rows.length < batchSize) {
             return results
         }
         cursor = rows.at(-1)
+    }
+}
+
+function insertNearestVectorResult(
+    results: VectorSearchResult[],
+    candidate: VectorSearchResult,
+    limit: number,
+): void {
+    if (limit <= 0) {
+        return
+    }
+
+    const currentWorst = results.at(-1)
+    if (
+        results.length >= limit &&
+        currentWorst &&
+        candidate.distance >= currentWorst.distance
+    ) {
+        return
+    }
+
+    const insertIndex = results.findIndex(
+        result => result.distance > candidate.distance,
+    )
+    results.splice(
+        insertIndex === -1 ? results.length : insertIndex,
+        0,
+        candidate,
+    )
+    if (results.length > limit) {
+        results.pop()
     }
 }
 
