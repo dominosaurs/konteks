@@ -253,6 +253,22 @@ describe('commands/mcp/tools', () => {
         expect(handleSpy).toHaveBeenCalledWith({})
     })
 
+    it('does not execute a selected tool when inspection is not confirmed', async () => {
+        selectResults.push('konteks_search')
+        confirmResults.push(false)
+        const tool = getTool('konteks_search')
+        const handleSpy = spyOn(tool, 'handle').mockImplementation(
+            async () => ({
+                ok: true,
+            }),
+        )
+
+        await createCommand().then(command => command.handle())
+
+        expect(inputCalls).toEqual([])
+        expect(handleSpy).not.toHaveBeenCalled()
+    })
+
     it('describes the tools command and JSON output clearly', async () => {
         const command = await createCommand()
 

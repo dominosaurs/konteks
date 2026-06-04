@@ -1,7 +1,9 @@
 import { join } from 'node:path'
 import { and, eq, inArray, sql } from 'drizzle-orm'
 import { getLoadablePath } from 'sqlite-vec'
-import getDb from '@/database/actions/_db'
+import getDb, {
+    withoutDatabaseTransactionContext,
+} from '@/database/actions/_db'
 import { vectorIndexEntries } from '@/database/schema'
 import { isSqliteTestRuntime } from '@/database/support/test-runtime'
 import { loadProjectContext } from '@/modules/project/context'
@@ -335,8 +337,9 @@ function scheduleVectorIndexRepair(
         return
     }
 
-    const repair = Promise.resolve()
-        .then(() => repairVectorIndexGroup(connection, input))
+    const repair = withoutDatabaseTransactionContext(() =>
+        Promise.resolve().then(() => repairVectorIndexGroup(connection, input)),
+    )
         .catch(error => {
             void appendProjectErrorLog({
                 error,
@@ -359,7 +362,7 @@ async function repairVectorIndexGroup(
     connection: VectorIndexConnection,
     input: VectorIndexGroup,
 ): Promise<void> {
-    await resetVectorIndexGroup(connection, input)
+    await pruneStaleVectorIndexGroupRows(connection, input)
     const createdAt = new Date().toISOString()
     const totalVectors = await countDurableVectors(input)
     const batchSize = vectorStreamBatchSize(input, totalVectors)
@@ -393,6 +396,17 @@ async function repairVectorIndexGroup(
         throw new Error(
             `Background sqlite-vec repair did not produce a healthy index for ${input.model} (${input.dimensions} dimensions).`,
         )
+    }
+}
+
+async function pruneStaleVectorIndexGroupRows(
+    connection: VectorIndexConnection,
+    input: VectorIndexGroup,
+): Promise<void> {
+    await pruneStaleVectorIndexEntries(input)
+    const tableName = tableNameForDimensions(input.dimensions)
+    if (hasVectorTable(connection.database, tableName)) {
+        await pruneStaleNativeVectorRows(connection.database, tableName, input)
     }
 }
 
@@ -495,6 +509,36 @@ where target_type = ?
     )
 }
 
+function deleteNativeVectorGroupTargets(
+    database: DatabaseSync,
+    table: string,
+    model: string,
+    targets: VectorIndexCursor[],
+): void {
+    if (targets.length === 0) {
+        return
+    }
+
+    for (const targetChunk of chunks(targets, SQLITE_DELETE_BIND_BATCH_SIZE)) {
+        const conditions = targetChunk
+            .map(() => '(target_type = ? and target_id = ?)')
+            .join(' or ')
+        const values = targetChunk.flatMap(target => [
+            target.target_type,
+            target.target_id,
+        ])
+        withStatement(
+            database,
+            `
+delete from ${table}
+where model = ?
+  and (${conditions})
+`,
+            statement => statement.run(model, ...values),
+        )
+    }
+}
+
 async function vectorConnection(): Promise<VectorIndexConnection | undefined> {
     if (globalThis.__konteksVectorIndexConnectionFactoryForTests) {
         return globalThis.__konteksVectorIndexConnectionFactoryForTests()
@@ -545,7 +589,7 @@ async function openVectorDatabase(path: string): Promise<DatabaseSync> {
     }
 
     throw new VectorIndexDependencyError(
-        'Failed to load the required sqlite-vec native extension with bun:sqlite or node:sqlite. Reinstall project dependencies so the sqlite-vec platform package is available.',
+        'sqlite-vec native acceleration is unavailable. Konteks will use durable exact-vector search instead. If this persists, clear your package manager cache and rerun the command.',
         { cause: new AggregateError(errors) },
     )
 }
@@ -636,6 +680,89 @@ limit ${limit}
 `)
 }
 
+async function pruneStaleVectorIndexEntries(
+    input: VectorIndexGroup,
+): Promise<void> {
+    const db = await getDb()
+    await db.run(sql`
+delete from vector_index_entries
+where model = ${input.model}
+  and dimensions = ${input.dimensions}
+  and not exists (
+      select 1
+      from target_embeddings
+      where target_embeddings.model = vector_index_entries.model
+        and target_embeddings.dimensions = vector_index_entries.dimensions
+        and target_embeddings.target_id = vector_index_entries.target_id
+        and target_embeddings.target_type = vector_index_entries.target_type
+  )
+`)
+}
+
+async function pruneStaleNativeVectorRows(
+    database: DatabaseSync,
+    tableName: string,
+    input: VectorIndexGroup,
+): Promise<void> {
+    const totalVectors = await countDurableVectors(input)
+    const batchSize = vectorStreamBatchSize(input, totalVectors)
+    let cursor: VectorIndexCursor | undefined
+
+    while (true) {
+        const nativeRows = loadNativeVectorPage(
+            database,
+            tableName,
+            input,
+            cursor,
+            batchSize,
+        )
+        const durableKeys = await loadDurableVectorKeys(input, nativeRows)
+        const staleRows = nativeRows.filter(
+            row => !durableKeys.has(vectorTargetKey(row)),
+        )
+        if (staleRows.length > 0) {
+            withNativeTransaction(database, () => {
+                deleteNativeVectorGroupTargets(
+                    database,
+                    tableName,
+                    input.model,
+                    staleRows,
+                )
+            })
+        }
+
+        if (nativeRows.length < batchSize) {
+            return
+        }
+        cursor = nativeRows.at(-1)
+    }
+}
+
+async function loadDurableVectorKeys(
+    input: VectorIndexGroup,
+    targets: VectorIndexCursor[],
+): Promise<Set<string>> {
+    if (targets.length === 0) {
+        return new Set()
+    }
+
+    const db = await getDb()
+    const rows = await db.all<VectorIndexCursor>(sql`
+select target_id, target_type
+from target_embeddings
+where model = ${input.model}
+  and dimensions = ${input.dimensions}
+  and (${sql.join(
+      targets.map(
+          target =>
+              sql`(target_type = ${target.target_type} and target_id = ${target.target_id})`,
+      ),
+      sql` or `,
+  )})
+`)
+    return new Set(rows.map(vectorTargetKey))
+}
+
 function loadNativeVectorPage(
     database: DatabaseSync,
     tableName: string,
@@ -700,6 +827,10 @@ function sameVectorIndexRows(
                 row.target_type === right[index]?.target_type,
         )
     )
+}
+
+function vectorTargetKey(row: VectorIndexCursor): string {
+    return `${row.target_type}:${row.target_id}`
 }
 
 async function exactVectorSearch(input: {

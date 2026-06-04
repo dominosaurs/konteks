@@ -1,4 +1,4 @@
-import { withTransaction } from '@/database/actions/_db'
+import { withReadDatabase } from '@/database/actions/_db'
 import hasSearchIndex from '@/database/actions/has-search-index'
 import queryDiaries, { type DiaryRow } from '@/database/actions/query-diaries'
 import queryFtsRows from '@/database/actions/query-fts-rows'
@@ -65,7 +65,7 @@ export default async function searchMemory(
     input: MemorySearchInput | MemoryRecallInput,
     options: SearchMemoryOptions = {},
 ): Promise<MemorySearchResult[]> {
-    return withTransaction(() => searchBoundMemory(input, options))
+    return withReadDatabase(() => searchBoundMemory(input, options))
 }
 
 async function searchBoundMemory(
