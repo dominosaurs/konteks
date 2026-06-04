@@ -9,6 +9,7 @@ import {
 } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
+import { readStream, waitForExit } from './_smoke-utils.mjs'
 
 const packageBinName = 'konteks-cli'
 const manager = process.argv[2]
@@ -171,24 +172,4 @@ async function run(command, args, options = { isolatedHome: true }) {
         exitCode,
         output: `${stdout}\n${stderr}`.trim(),
     }
-}
-
-function readStream(stream) {
-    return new Promise((resolve, reject) => {
-        let output = ''
-
-        stream.setEncoding('utf8')
-        stream.on('data', chunk => {
-            output += chunk
-        })
-        stream.on('error', reject)
-        stream.on('end', () => resolve(output))
-    })
-}
-
-function waitForExit(child) {
-    return new Promise((resolve, reject) => {
-        child.on('error', reject)
-        child.on('exit', code => resolve(code ?? 1))
-    })
 }
