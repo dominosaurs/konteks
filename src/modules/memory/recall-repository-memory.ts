@@ -1,4 +1,4 @@
-import { withTransaction } from '@/database/actions/_db'
+import { withReadDatabase } from '@/database/actions/_db'
 import historicalRelations, {
     historicalRelationsForEntities,
 } from '@/database/actions/historical-relations'
@@ -28,7 +28,7 @@ export default async function recallRepositoryMemory(
         embeddingProvider?: EmbeddingProviderContract
     } = {},
 ): Promise<RecallPackage> {
-    return await withTransaction(async () => {
+    return await withReadDatabase(async () => {
         const focus = normalizeRecallFocus(input.focus)
         const memories = await searchMemory(
             {

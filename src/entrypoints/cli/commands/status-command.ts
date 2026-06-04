@@ -35,6 +35,7 @@ type ProjectStatus = {
     configExists: boolean
     databasePath: string
     databaseExists: boolean
+    databaseBusy: boolean
     memoryStats: ProjectMemoryStats
     freshness: {
         status: 'missing' | 'fresh' | 'stale'
@@ -65,6 +66,15 @@ function formatStatus(
         '',
         row('Source files', formatInteger(status.memoryStats.files), color),
         row('Vectors', formatInteger(status.memoryStats.embeddings), color),
+        status.databaseBusy
+            ? row(
+                  'Database',
+                  color.warning(
+                      'busy: background maintenance or extraction is running',
+                  ),
+                  color,
+              )
+            : undefined,
         '',
         color.warning('  DERIVED MEMORY'),
         nestedRow('Modules', formatInteger(status.memoryStats.modules), color),
@@ -141,9 +151,11 @@ class ProjectStatusReader implements ProjectStatusReaderContract {
         const memoryDirExists = await pathExists(context.memoryDir)
         const databaseExists = await pathExists(databasePath)
         const initialized = memoryDirExists && context.configExists
+        const memoryStats = await readStatusMemoryStats(databaseExists)
 
         return {
             configExists: context.configExists,
+            databaseBusy: memoryStats.databaseBusy,
             databaseExists,
             databasePath,
             freshness: initialized
@@ -156,12 +168,44 @@ class ProjectStatusReader implements ProjectStatusReaderContract {
                   },
             memoryDir: context.memoryDir,
             memoryDirExists,
-            memoryStats: databaseExists
-                ? await readProjectMemoryStats()
-                : emptyMemoryStats(),
+            memoryStats: memoryStats.value,
             projectRoot: context.projectRoot,
         }
     }
+}
+
+async function readStatusMemoryStats(
+    databaseExists: boolean,
+): Promise<{ databaseBusy: boolean; value: ProjectStatus['memoryStats'] }> {
+    if (!databaseExists) {
+        return { databaseBusy: false, value: emptyMemoryStats() }
+    }
+
+    try {
+        return {
+            databaseBusy: false,
+            value: await readProjectMemoryStats(),
+        }
+    } catch (error) {
+        if (isSqliteBusyError(error)) {
+            return { databaseBusy: true, value: emptyMemoryStats() }
+        }
+        throw error
+    }
+}
+
+function isSqliteBusyError(error: unknown): boolean {
+    let current: unknown = error
+    while (current instanceof Error) {
+        if (
+            current.message.includes('SQLITE_BUSY') ||
+            current.message.includes('database is locked')
+        ) {
+            return true
+        }
+        current = current.cause
+    }
+    return false
 }
 
 function emptyMemoryStats(): ProjectStatus['memoryStats'] {

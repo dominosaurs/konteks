@@ -3,7 +3,7 @@ import { mkdtemp, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { eq } from 'drizzle-orm'
-import getDb from '@/database/actions/_db'
+import getDb, { withTransaction } from '@/database/actions/_db'
 import {
     retrievalDocuments,
     targetEmbeddings,
@@ -104,6 +104,54 @@ describe('vector index', () => {
                 vector: new Float32Array([1, 1, 0, 0]),
             }),
         ).resolves.toEqual([])
+    })
+
+    it('does not schedule repair for an up-to-date vector index', async () => {
+        await makeTempProject()
+        const createdAt = '2024-01-01T00:00:00.000Z'
+        const targets = Array.from({ length: 10 }, (_, index) => ({
+            createdAt,
+            dimensions: 4,
+            embeddingHash: `healthy-hash-${index}`,
+            model: 'fake/healthy',
+            targetId: `section-${index}`,
+            targetType: 'section' as const,
+            vector: new Float32Array([index === 3 ? 1 : 0, 1, 0, 0]),
+        }))
+        const db = await getDb()
+        await db.insert(targetEmbeddings).values(
+            targets.map(target => ({
+                createdAt,
+                dimensions: target.dimensions,
+                dtype: 'float32',
+                embeddingHash: target.embeddingHash,
+                model: target.model,
+                normalized: 1,
+                targetId: target.targetId,
+                targetType: target.targetType,
+                vectorBlob: toBlob(target.vector),
+            })),
+        )
+        await upsertVectorIndexTargets(targets)
+
+        await expect(
+            searchVectorIndex({
+                dimensions: 4,
+                limit: 1,
+                model: 'fake/healthy',
+                vector: new Float32Array([1, 1, 0, 0]),
+            }),
+        ).resolves.toMatchObject([{ targetId: 'section-3' }])
+        await waitForVectorIndexRepairs()
+
+        const entries = await db
+            .select()
+            .from(vectorIndexEntries)
+            .where(eq(vectorIndexEntries.model, 'fake/healthy'))
+        expect(entries).toHaveLength(10)
+        expect(new Set(entries.map(entry => entry.updatedAt))).toEqual(
+            new Set([createdAt]),
+        )
     })
 
     it('leaves corpus vector repair to explicit extraction jobs', async () => {
@@ -249,6 +297,138 @@ describe('vector index', () => {
             .from(vectorIndexEntries)
             .where(eq(vectorIndexEntries.model, 'fake/repair'))
         expect(repairedEntries).toHaveLength(300)
+    })
+
+    it('prunes stale metadata and native rows during background repair', async () => {
+        await makeTempProject()
+        const db = await getDb()
+        const createdAt = new Date().toISOString()
+        const targets = Array.from({ length: 10 }, (_, index) => ({
+            createdAt,
+            dimensions: 4,
+            embeddingHash: `stale-prune-hash-${index}`,
+            model: 'fake/stale-prune',
+            targetId: `section-${index}`,
+            targetType: 'section' as const,
+            vector: new Float32Array([index === 7 ? 1 : 0, 1, 0, 0]),
+        }))
+        const staleTarget = {
+            createdAt,
+            dimensions: 4,
+            embeddingHash: 'stale-prune-extra-hash',
+            model: 'fake/stale-prune',
+            targetId: 'section-stale',
+            targetType: 'section' as const,
+            vector: new Float32Array([0, 0, 1, 0]),
+        }
+        await db.insert(targetEmbeddings).values(
+            targets.map(target => ({
+                createdAt,
+                dimensions: target.dimensions,
+                dtype: 'float32',
+                embeddingHash: target.embeddingHash,
+                model: target.model,
+                normalized: 1,
+                targetId: target.targetId,
+                targetType: target.targetType,
+                vectorBlob: toBlob(target.vector),
+            })),
+        )
+        await upsertVectorIndexTargets([...targets, staleTarget])
+
+        await expect(
+            searchVectorIndex({
+                dimensions: 4,
+                limit: 1,
+                model: 'fake/stale-prune',
+                vector: new Float32Array([1, 1, 0, 0]),
+            }),
+        ).resolves.toMatchObject([{ targetId: 'section-7' }])
+
+        await waitForVectorIndexRepairs()
+        const repairedEntries = await db
+            .select()
+            .from(vectorIndexEntries)
+            .where(eq(vectorIndexEntries.model, 'fake/stale-prune'))
+        expect(repairedEntries.map(entry => entry.targetId).sort()).toEqual(
+            targets.map(target => target.targetId).sort(),
+        )
+        const repairedTimestamps = repairedEntries
+            .map(entry => ({
+                targetId: entry.targetId,
+                updatedAt: entry.updatedAt,
+            }))
+            .sort(compareTimestampRows)
+
+        await expect(
+            searchVectorIndex({
+                dimensions: 4,
+                limit: 1,
+                model: 'fake/stale-prune',
+                vector: new Float32Array([1, 1, 0, 0]),
+            }),
+        ).resolves.toMatchObject([{ targetId: 'section-7' }])
+        await waitForVectorIndexRepairs()
+        const stableEntries = await db
+            .select()
+            .from(vectorIndexEntries)
+            .where(eq(vectorIndexEntries.model, 'fake/stale-prune'))
+        expect(
+            stableEntries
+                .map(entry => ({
+                    targetId: entry.targetId,
+                    updatedAt: entry.updatedAt,
+                }))
+                .sort(compareTimestampRows),
+        ).toEqual(repairedTimestamps)
+    })
+
+    it('runs background vector repair outside foreground transactions', async () => {
+        await makeTempProject()
+        const db = await getDb()
+        const createdAt = new Date().toISOString()
+        const targets = Array.from({ length: 10 }, (_, index) => ({
+            createdAt,
+            dimensions: 4,
+            embeddingHash: `transaction-repair-hash-${index}`,
+            model: 'fake/transaction-repair',
+            targetId: `section-${index}`,
+            targetType: 'section' as const,
+            vector: new Float32Array([index === 9 ? 1 : 0, 1, 0, 0]),
+        }))
+        await db.insert(targetEmbeddings).values(
+            targets.map(target => ({
+                createdAt,
+                dimensions: target.dimensions,
+                dtype: 'float32',
+                embeddingHash: target.embeddingHash,
+                model: target.model,
+                normalized: 1,
+                targetId: target.targetId,
+                targetType: target.targetType,
+                vectorBlob: toBlob(target.vector),
+            })),
+        )
+        await upsertVectorIndexTargets(targets)
+        await db
+            .delete(vectorIndexEntries)
+            .where(eq(vectorIndexEntries.targetId, 'section-9'))
+
+        await withTransaction(async () => {
+            await searchVectorIndex({
+                dimensions: 4,
+                limit: 1,
+                model: 'fake/transaction-repair',
+                vector: new Float32Array([1, 1, 0, 0]),
+            })
+        })
+
+        await waitForVectorIndexRepairs()
+        const repairedEntries = await db
+            .select()
+            .from(vectorIndexEntries)
+            .where(eq(vectorIndexEntries.model, 'fake/transaction-repair'))
+        expect(repairedEntries).toHaveLength(10)
     })
 
     it('embeds retrieval documents past the removed 250 row batch boundary', async () => {
@@ -441,4 +621,11 @@ function lastIndexWhere<T>(
         }
     }
     return -1
+}
+
+function compareTimestampRows(
+    left: { targetId: string },
+    right: { targetId: string },
+): number {
+    return left.targetId.localeCompare(right.targetId)
 }

@@ -58,7 +58,7 @@ export default class ToolsCommand extends BaseCommand<
                 : await callToolConfirmation()
 
             if (!isConfirmed) {
-                loop = !directToolName
+                loop = false
                 continue
             }
 

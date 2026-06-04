@@ -20,7 +20,7 @@ type DatabaseEntry = {
 }
 
 const databases = new Map<string, DatabaseEntry>()
-const currentDatabase = new AsyncLocalStorage<ProjectDatabase>()
+const currentDatabase = new AsyncLocalStorage<ProjectDatabase | undefined>()
 
 async function currentDatabaseEntry(): Promise<DatabaseEntry> {
     if (isSqliteTestRuntime()) {
@@ -86,12 +86,40 @@ export async function withTransaction<T>(
     }
 }
 
+export async function withReadDatabase<T>(
+    operation: () => Promise<T>,
+): Promise<T> {
+    const activeDatabase = currentDatabase.getStore()
+    if (activeDatabase) {
+        return operation()
+    }
+
+    const entry = await currentDatabaseEntry()
+    await entry.initialized
+    return currentDatabase.run(entry.db, operation)
+}
+
+export function withoutDatabaseTransactionContext<T>(operation: () => T): T {
+    return currentDatabase.run(undefined, operation)
+}
+
 async function initializeDatabase(
     client: Client,
     db: ProjectDatabase,
 ): Promise<void> {
+    await configureDatabase(client)
     await runMigrations(client, db)
     await currentDatabase.run(db, () => ensureSearchIndex())
+}
+
+async function configureDatabase(client: Client): Promise<void> {
+    if (isSqliteTestRuntime()) {
+        return
+    }
+
+    await client.execute('pragma journal_mode = wal')
+    await client.execute('pragma busy_timeout = 10000')
+    await client.execute('pragma synchronous = normal')
 }
 
 export default async function getDb(): Promise<ProjectDatabase> {

@@ -674,7 +674,7 @@ describe('retrieval quality evals', () => {
     it('reports required sqlite-vec dependency failures clearly', async () => {
         globalThis.__konteksVectorIndexConnectionFactoryForTests = async () => {
             throw new Error(
-                'Failed to load the required sqlite-vec native extension.',
+                'sqlite-vec native acceleration is unavailable. Konteks will use durable exact-vector search instead. If this persists, clear your package manager cache and rerun the command.',
             )
         }
 
@@ -686,7 +686,7 @@ describe('retrieval quality evals', () => {
                 vector: new Float32Array([1, 0, 0, 0]),
             }),
         ).rejects.toThrow(
-            'Failed to load the required sqlite-vec native extension.',
+            'clear your package manager cache and rerun the command',
         )
     })
 })

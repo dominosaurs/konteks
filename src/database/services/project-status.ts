@@ -1,4 +1,4 @@
-import { withTransaction } from '@/database/actions/_db'
+import { withReadDatabase } from '@/database/actions/_db'
 import queryProjectMemoryStats from '@/database/actions/query-project-memory-stats'
 
 export type ProjectMemoryStats = {
@@ -13,5 +13,5 @@ export type ProjectMemoryStats = {
 }
 
 export async function readProjectMemoryStats(): Promise<ProjectMemoryStats> {
-    return await withTransaction(() => queryProjectMemoryStats())
+    return await withReadDatabase(() => queryProjectMemoryStats())
 }

@@ -1,4 +1,4 @@
-import { withTransaction } from '@/database/actions/_db'
+import { withReadDatabase } from '@/database/actions/_db'
 import queryExportDiaryRows from '@/database/actions/query-export-diary-rows'
 import queryExportObservationRows from '@/database/actions/query-export-observation-rows'
 import {
@@ -12,7 +12,7 @@ export default async function exportDurableMemory(
     context: Project,
     options: { includeInactive?: boolean },
 ): Promise<DurableMemoryExport> {
-    const { diaryRows, memoryRows } = await withTransaction(async () => ({
+    const { diaryRows, memoryRows } = await withReadDatabase(async () => ({
         diaryRows: await queryExportDiaryRows(options),
         memoryRows: await queryExportObservationRows(options),
     }))
