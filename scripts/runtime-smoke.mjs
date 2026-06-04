@@ -2,6 +2,7 @@ import { spawn } from 'node:child_process'
 import { mkdir, mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
+import { readStream, waitForExit } from './_smoke-utils.mjs'
 
 const runtime = process.argv[2]
 const supportedRuntimes = new Set(['bun', 'node'])
@@ -114,24 +115,4 @@ async function runCli(args) {
     } finally {
         await rm(homeDir, { force: true, recursive: true })
     }
-}
-
-function readStream(stream) {
-    return new Promise((resolve, reject) => {
-        let output = ''
-
-        stream.setEncoding('utf8')
-        stream.on('data', chunk => {
-            output += chunk
-        })
-        stream.on('error', reject)
-        stream.on('end', () => resolve(output))
-    })
-}
-
-function waitForExit(child) {
-    return new Promise((resolve, reject) => {
-        child.on('error', reject)
-        child.on('exit', code => resolve(code ?? 1))
-    })
 }
