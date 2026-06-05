@@ -41,10 +41,12 @@ describe('konteks_warm_up', () => {
         previousDisableSharedEmbeddingProvider =
             process.env.KONTEKS_DISABLE_SHARED_EMBEDDING_PROVIDER
         process.env.KONTEKS_DISABLE_SHARED_EMBEDDING_PROVIDER = '1'
+        globalThis.__konteksCheckForUpdateForTests = async () => undefined
     })
 
     afterEach(async () => {
         await globalThis.__konteksWaitForMemoryMaintenanceForTests?.()
+        globalThis.__konteksCheckForUpdateForTests = undefined
         if (previousDisableSharedEmbeddingProvider === undefined) {
             delete process.env.KONTEKS_DISABLE_SHARED_EMBEDDING_PROVIDER
         } else {
@@ -121,6 +123,38 @@ describe('konteks_warm_up', () => {
         expect(text).toContain(
             'Use structured save payloads for session memory.',
         )
+    })
+
+    it('includes an update notice only when an update is available', async () => {
+        const projectRoot = await mkdtemp(join(tmpdir(), 'konteks-warm-up-'))
+        tempDirs.push(projectRoot)
+        await mkdir(join(projectRoot, 'src'))
+        await mkdir(join(projectRoot, '.git'))
+        await writeFile(join(projectRoot, 'src', 'index.txt'), 'export {}\n')
+
+        const context = await withProjectRoot(projectRoot, () =>
+            loadProjectContext(),
+        )
+        await withProjectRoot(projectRoot, () =>
+            extractProject(context, 'full', extractionOptions()),
+        )
+
+        globalThis.__konteksCheckForUpdateForTests = async () => ({
+            command: 'bun add -g konteks-cli',
+            current: '1.0.0',
+            latest: '1.1.0',
+        })
+
+        const result = await withProjectRoot(projectRoot, () =>
+            callKonteksTool('konteks_warm_up', {}),
+        )
+        const text = extractText(result)
+
+        expect(text).toContain('update:')
+        expect(text).toContain('available: true')
+        expect(text).toContain('current: 1.0.0')
+        expect(text).toContain('latest: 1.1.0')
+        expect(text).toContain('command: bun add -g konteks-cli')
     })
 
     it('updates changed project memory before warming up', async () => {

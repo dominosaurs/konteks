@@ -1,6 +1,7 @@
 import type { Command as CommanderCommand } from 'commander'
 import consoleOutput from '@/support/console-output'
 import getVersion from '@/support/get-version'
+import { checkForKonteksUpdate } from '@/support/update-check'
 
 export type Command = CommanderCommand
 
@@ -78,6 +79,10 @@ export default abstract class BaseCommand<
                 args,
                 options: commandOptions,
             })
+
+            if (this.name !== 'mcp') {
+                await printUpdateNotice()
+            }
         })
     }
 
@@ -106,6 +111,21 @@ export default abstract class BaseCommand<
             command.option(flags, description)
         })
     }
+}
+
+async function printUpdateNotice(): Promise<void> {
+    const update = await checkForKonteksUpdate()
+    if (!update) {
+        return
+    }
+
+    consoleOutput.print(color =>
+        [
+            '',
+            `${color.warning('Update available')}: konteks-cli ${update.current} -> ${update.latest}`,
+            `${color.dim('Run')}: ${color.primary(update.command)}`,
+        ].join('\n'),
+    )
 }
 
 function stripCommanderActionValues<Options extends object>(
