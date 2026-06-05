@@ -6,11 +6,11 @@
 
 It builds a project-local context graph through autonomous **knowledge curation**, ensuring you **never re-explain your project** to an AI agent.
 
-Memory artifacts are stored directly inside your repository, exposing compact, task-specific recall through an MCP server without requiring global installation or cloud dependencies.
+Memory artifacts are stored directly inside your repository, exposing compact, task-specific recall through an MCP server without cloud dependencies.
 
 ## 🚀 Key Features
 
-* **Zero-Install**: Run anywhere via `npx` or `bunx` without global installation.
+* **One-Off Setup**: Try or initialize Konteks with `npx` or `bunx`; use an installed CLI for MCP startup.
 * **Language-Aware**: Understands code structure across [various file types](src/assets/grammar-registry.ts).
 * **Local-First**: Your project memory stays in your repo—no cloud, no accounts.
 * **Token-Efficient**: High-fidelity context synthesis designed for LLM economy.

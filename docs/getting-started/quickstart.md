@@ -9,7 +9,7 @@ Set up Konteks once, then use the same [session](../reference/glossary.md#sessio
 
 Run setup commands from your project root. Konteks requires **Node.js 22.13+** or **Bun 1.3+**.
 
-Use `npx -y konteks-cli` by default unless you prefer another package runner.
+Use `npx -y konteks-cli` by default for one-off setup unless you prefer another package runner.
 
 ### 1. Initialize Memory
 
@@ -35,6 +35,15 @@ Do not commit `.konteks/`; initialization adds it to `.gitignore` so project mem
 
 ### 2. Set Up MCP
 
+Install Konteks before configuring MCP. MCP clients expect the server process to start quickly, while one-off runners such as `npx`, `bunx`, `pnpm dlx`, and `yarn dlx` may spend time resolving or downloading packages before the server starts.
+
+```bash
+npm install -g konteks-cli
+
+# or, with Bun:
+bun add -g konteks-cli
+```
+
 Add Konteks to your MCP-compatible coding agent configuration before opening the agent.
 
 > [!TIP]
@@ -44,8 +53,8 @@ Add Konteks to your MCP-compatible coding agent configuration before opening the
 {
   "mcpServers": {
     "konteks": {
-      "command": "npx",
-      "args": ["-y", "konteks-cli", "mcp"]
+      "command": "konteks-cli",
+      "args": ["mcp"]
     }
   }
 }
@@ -54,7 +63,7 @@ Add Konteks to your MCP-compatible coding agent configuration before opening the
 MCP configuration locations are agent-specific. Prefer a global registration when your agent supports it, and restart or reload the agent after changing its MCP configuration.
 
 > [!IMPORTANT]
-> Konteks exposes its lifecycle workflows as [MCP Prompts](https://modelcontextprotocol.io/docs/concepts/prompts). If your agent does not show MCP Prompts in its autocomplete UI, run `npx -y konteks-cli install-skills --global` once after initialization to use the lifecycle prompts as native skills. Use the same package runner you chose for setup. See [Compatibility](../api/cli.md#compatibility-skills).
+> Konteks exposes its lifecycle workflows as [MCP Prompts](https://modelcontextprotocol.io/docs/concepts/prompts). If your agent does not show MCP Prompts in its autocomplete UI, run `konteks-cli install-skills --global` once after installation to use the lifecycle prompts as native skills. See [Compatibility](../api/cli.md#compatibility-skills).
 
 ## From This Point On
 

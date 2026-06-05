@@ -1,6 +1,6 @@
 # CLI API
 
-The Konteks CLI manages local project memory. It is designed to run through `npx`, `bunx`, `pnpm dlx`, or `yarn dlx`.
+The Konteks CLI manages local project memory. It can run through `npx`, `bunx`, `pnpm dlx`, or `yarn dlx` for one-off commands, but MCP server registration should use an installed `konteks-cli` executable for fast startup.
 
 For terms, see the [Glossary](../reference/glossary.md).
 
@@ -20,6 +20,9 @@ For terms, see the [Glossary](../reference/glossary.md).
 | `konteks restore <file>` | Restore | Restore a full `.konteks` archive. |
 | `konteks mcp` | Serve | Start the MCP server for an agent client. |
 | `konteks install-skills` | Compatibility | Install Konteks skills for agents without MCP prompt support. |
+
+> [!IMPORTANT]
+> Configure MCP clients with an installed command such as `"command": "konteks-cli", "args": ["mcp"]`. Avoid one-off runners for MCP server startup because package resolution or downloads can exceed the client startup timeout.
 
 ## Memory Portability
 

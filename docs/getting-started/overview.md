@@ -26,11 +26,12 @@ Konteks stores memory artifacts inside your repository, typically in a `.konteks
 * No cloud services, no external accounts, and no telemetry.
 * Memory is as portable as your repo.
 
-### 2. Zero-Friction (The Zero-Install Mandate)
+### 2. Zero-Friction Setup
 
-We believe that setup should not be a barrier. Konteks is designed to be used through the JavaScript package ecosystem without global installation.
+We believe that setup should not be a barrier. Konteks can be tried and initialized through the JavaScript package ecosystem without a global install.
 
-* Use it via `npx` or `bunx`.
+* Use one-off runners such as `npx` or `bunx` for setup and trial commands.
+* Use an installed `konteks-cli` command for MCP server startup so agents do not wait on package resolution.
 * No separate database service or external account required.
 * Works anywhere Node.js or Bun is available.
 

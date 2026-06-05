@@ -33,13 +33,15 @@ This guide helps you resolve common issues encountered while setting up or using
 ### 4. "MCP Tool timeout or connection error"
 
 **Symptoms**: Your AI agent reports that it cannot connect to the Konteks server or the tool timed out.
-**Cause**: The MCP server process may have crashed or is taking too long to process a large project.
+**Cause**: The MCP server process may have crashed, is taking too long to process a large project, or is being launched through a one-off package runner that must resolve or download packages before the server starts.
 **Solution**:
 
-1. Run `konteks status` to check project memory freshness.
-2. Ensure you are using a supported runtime (Bun 1.3+ or Node 22.13+).
-3. Check `.konteks/errors.log` for recent internal Konteks errors.
-4. Check the logs of your AI agent/host for connection-level errors.
+1. Install Konteks globally with `npm install -g konteks-cli` or `bun add -g konteks-cli`.
+2. Configure your MCP client with `"command": "konteks-cli"` and `"args": ["mcp"]`, not `npx`, `bunx`, `pnpm dlx`, or `yarn dlx`.
+3. Run `konteks-cli status` to check project memory freshness.
+4. Ensure you are using a supported runtime (Bun 1.3+ or Node 22.13+).
+5. Check `.konteks/errors.log` for recent internal Konteks errors.
+6. Check the logs of your AI agent/host for connection-level errors.
 
 ### 5. "Secrets or sensitive data in recall"
 
