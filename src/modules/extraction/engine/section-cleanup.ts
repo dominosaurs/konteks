@@ -135,6 +135,17 @@ where target_type = 'section'
         )
 }
 
+export async function recordExtractedSuppressionsForPaths(
+    paths: string[],
+): Promise<void> {
+    const uniquePaths = [...new Set(paths)].filter(Boolean)
+    if (uniquePaths.length === 0) {
+        return
+    }
+
+    await recordExtractedSuppressions(uniquePaths)
+}
+
 async function recordExtractedSuppressions(paths?: string[]): Promise<void> {
     const db = await getDb()
     await db.run(sql`

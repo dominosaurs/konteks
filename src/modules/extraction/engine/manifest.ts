@@ -1,4 +1,5 @@
-import { readFile, writeFile } from 'node:fs/promises'
+import { randomUUID } from 'node:crypto'
+import { readFile, rename, rm, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { pathExists } from '@/modules/project/context'
 import type { ExtractionMode, LegacyExtractionMode } from '@/types/extraction'
@@ -65,10 +66,19 @@ export async function writeExtractionManifest(
     memoryDir: string,
     manifest: ExtractionManifest,
 ): Promise<void> {
-    await writeFile(
-        extractionManifestPath(memoryDir),
-        `${JSON.stringify(manifest, null, 2)}\n`,
+    const targetPath = extractionManifestPath(memoryDir)
+    const tempPath = join(
+        memoryDir,
+        `.extraction-manifest.${process.pid}.${Date.now()}.${randomUUID()}.tmp`,
     )
+
+    try {
+        await writeFile(tempPath, `${JSON.stringify(manifest, null, 2)}\n`)
+        await rename(tempPath, targetPath)
+    } catch (error) {
+        await rm(tempPath, { force: true }).catch(() => undefined)
+        throw error
+    }
 }
 
 export async function getExtractionFreshness(
