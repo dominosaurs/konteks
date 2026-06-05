@@ -83,7 +83,7 @@ Initialization should:
 
 * Create `.konteks/` for project-local memory.
 * Initialize the local SQLite memory store.
-* Add `.konteks/` to `.gitignore`.
+* Create `.konteks/.gitignore` so memory artifacts stay untracked.
 * Extract and index the current project state.
 
 If initialization reports that the project is already initialized, treat that as success and continue.
@@ -189,7 +189,7 @@ The save prompt should persist compact durable memories first, then one session 
 ## Guidance
 
 * Ask before making broad edits to global agent configuration.
-* Do not commit `.konteks/`; initialization should add it to `.gitignore`.
+* Do not commit `.konteks/`; initialization should keep it untracked with `.konteks/.gitignore`.
 * Do not add Konteks as an application dependency unless the user explicitly asks for that.
 * Do not invent custom memory directories; Konteks uses `.konteks/` in the project root.
 * Do not configure MCP to launch Konteks through `npx`, plain `bunx`, `pnpm dlx`, or `yarn dlx`. Use `bunx --bun konteks-cli mcp` for Bun users and direct `konteks-cli mcp` for Node users.

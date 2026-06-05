@@ -146,17 +146,20 @@ describe('InitCommand', () => {
             return output.join('\n')
         })
 
-    it('adds .konteks to .gitignore during init', async () => {
+    it('creates a local .konteks/.gitignore during init', async () => {
         const projectRoot = await makeTempProject()
 
         await init(projectRoot)
 
         await expect(
+            readFile(join(projectRoot, '.konteks', '.gitignore'), 'utf8'),
+        ).resolves.toBe('*\n')
+        await expect(
             readFile(join(projectRoot, '.gitignore'), 'utf8'),
-        ).resolves.toBe('.konteks/\n')
+        ).rejects.toHaveProperty('code', 'ENOENT')
     })
 
-    it('preserves existing .gitignore entries', async () => {
+    it('preserves existing root .gitignore entries', async () => {
         const projectRoot = await makeTempProject()
         await writeFile(join(projectRoot, '.gitignore'), 'node_modules\n')
 
@@ -164,22 +167,40 @@ describe('InitCommand', () => {
 
         await expect(
             readFile(join(projectRoot, '.gitignore'), 'utf8'),
-        ).resolves.toBe('node_modules\n.konteks/\n')
+        ).resolves.toBe('node_modules\n')
+        await expect(
+            readFile(join(projectRoot, '.konteks', '.gitignore'), 'utf8'),
+        ).resolves.toBe('*\n')
     })
 
-    it('does not duplicate existing .konteks ignore entries', async () => {
+    it('adds a catch-all to an existing local .konteks/.gitignore', async () => {
         const projectRoot = await makeTempProject()
         await mkdir(join(projectRoot, '.konteks'))
         await writeFile(
-            join(projectRoot, '.gitignore'),
-            'node_modules\n.konteks/\n',
+            join(projectRoot, '.konteks', '.gitignore'),
+            'memory.sqlite\n',
         )
 
         await init(projectRoot)
 
         await expect(
-            readFile(join(projectRoot, '.gitignore'), 'utf8'),
-        ).resolves.toBe('node_modules\n.konteks/\n')
+            readFile(join(projectRoot, '.konteks', '.gitignore'), 'utf8'),
+        ).resolves.toBe('memory.sqlite\n*\n')
+    })
+
+    it('does not duplicate an existing local catch-all .konteks/.gitignore', async () => {
+        const projectRoot = await makeTempProject()
+        await mkdir(join(projectRoot, '.konteks'))
+        await writeFile(
+            join(projectRoot, '.konteks', '.gitignore'),
+            '# Konteks memory\n*\n',
+        )
+
+        await init(projectRoot)
+
+        await expect(
+            readFile(join(projectRoot, '.konteks', '.gitignore'), 'utf8'),
+        ).resolves.toBe('# Konteks memory\n*\n')
     })
 
     it('skips when the project is already initialized', async () => {
@@ -211,7 +232,7 @@ describe('InitCommand', () => {
         expect(plainOutput).toContain('Initializing project memory')
 
         expect(plainOutput).toContain(
-            '✓ Extracted 2 modules and 2 sections from 2 files',
+            '✓ Extracted 1 modules and 1 sections from 1 files',
         )
         expect(plainOutput).not.toContain('Loaded 0 language parsers')
         expect(plainOutput).toContain('✓ Preparing dependencies')
@@ -225,8 +246,8 @@ describe('InitCommand', () => {
         expect(plainOutput).toContain('vectors indexed')
         expect(plainOutput).toContain('✓ Generated project summary')
         expect(plainOutput).toContain('Project memory ready')
-        expect(plainOutput).toContain('Files indexed        2')
-        expect(plainOutput).toContain('Vectors indexed      4')
+        expect(plainOutput).toContain('Files indexed        1')
+        expect(plainOutput).toContain('Vectors indexed      2')
         expect(plainOutput).not.toContain('Documents extracted')
         expect(plainOutput).not.toContain('Initialized Konteks at')
         expect(plainOutput).not.toContain('Extracted 2 files into 2 sections')
@@ -340,7 +361,7 @@ describe('InitCommand', () => {
         expect(output).not.toContain('Loading tokenizer.json')
         expect(output).not.toContain('Loaded 1 language parsers')
         expect(output).toContain(
-            '✓ Extracted 4 modules and 3 sections from 3 files',
+            '✓ Extracted 3 modules and 2 sections from 2 files',
         )
     })
 
@@ -357,6 +378,9 @@ describe('InitCommand', () => {
                 'utf8',
             ),
         ).resolves.toContain('"version": 1')
+        await expect(
+            readFile(join(projectRoot, '.konteks', '.gitignore'), 'utf8'),
+        ).resolves.toBe('*\n')
     })
 
     it('continues from existing sections when the manifest is missing', async () => {
@@ -375,7 +399,7 @@ describe('InitCommand', () => {
 
         const resumedManifest = JSON.parse(await readFile(manifestPath, 'utf8'))
         expect(output).toContain(
-            '✓ Extracted 2 modules and 2 sections from 2 files',
+            '✓ Extracted 1 modules and 1 sections from 1 files',
         )
         expect(output).not.toContain('Documents extracted')
         expect(output).not.toContain('Extracted 5 documents from 0 files')
