@@ -2,59 +2,75 @@
 
 This guide helps you resolve common issues encountered while setting up or using Konteks.
 
-## Common Issues & Solutions
+<details>
+<summary><strong>Konteks memory is not initialized</strong></summary>
 
-### 1. "Konteks memory is not initialized"
+<blockquote>
+The `.konteks` directory or `config.json` is missing in your project root.
 
-**Symptoms**: Any command returns an error about missing initialization.
-**Cause**: The `.konteks` directory or `config.json` is missing in your project root.
-**Solution**: Run `konteks init` to initialize the project.
+Run `konteks init` to initialize the project.
+</blockquote>
+</details>
 
-### 2. Understanding Recall Quality Signals
+<details>
+<summary><strong>MCP Tool timeout or connection error</strong></summary>
 
-**Symptoms**: Recall returns a `weak` or `partial` quality label.
-**Cause**: Konteks provides an honest signal about the relevance of retrieved context.
+<blockquote>
+The server crashed, timed out scanning a massive project, was launched through a slow package runner, or the direct `konteks-cli` command cannot find Node.js on your `PATH`.
 
-* **Weak**: No direct implementation matches or authoritative facts were found.
-* **Partial**: Some signals were found (e.g., related modules or historical diary entries), but no direct implementation hits.
+* **Install globally:** Run `bun add -g konteks-cli` (Bun users) or `npm install -g konteks-cli` (Node users).
+* **Configure your MCP client:**
+  * *Bun:* Use `"command": "bunx"` and `"args": ["--bun", "konteks-cli", "mcp"]`.
+  * *Node:* Use `"command": "konteks-cli"` and `"args": ["mcp"]`.
+* **Check memory freshness:** Run `bunx --bun konteks-cli status` (Bun) or `konteks-cli status` (Node).
+* **Verify runtime:** Ensure you are using Bun 1.3+ or Node 22.13+. If configuring MCP with the direct `konteks-cli` command, Node must be on your `PATH`.
+* **Check logs:** Inspect `.konteks/errors.log` for internal errors, and check your AI agent's logs for connection issues.
 
-**Solution**:
+</blockquote>
+</details>
 
-1. **Refine your Task**: Be more specific in your recall request (e.g., mention a specific file or module).
-2. **Rebuild the Index**: Run `konteks rebuild` to scan recent changes and rebuild the [Derived Memory](glossary.md#derived-memory).
-3. **Check Ignore Rules**: Ensure the files you expect are not being excluded by `.gitignore` or `.konteksignore`.
+<details>
+<summary><strong>Konteks MCP tool failed due to an internal error</strong></summary>
 
-### 3. Durable memory is missing after a rebuild
+<blockquote>
+An unexpected internal error occurred. Detailed stack traces are hidden from MCP clients by default to prevent leaking internal context.
 
-**Symptoms**: Your saved observations or diary entries are gone.
-**Cause**: `konteks rebuild` only rebuilds **derived** data (sections, entities). **Durable** data (observations, diary) should be preserved.
-**Solution**: If durable data is truly missing, check if you are in the correct project root or if the `.konteks/memory.sqlite` file was manually deleted.
+Open `.konteks/errors.log` in your project root to view the timestamp, surface, metadata, and full stack trace for diagnosis. The log is local and redacted best-effort, but should be treated as diagnostic data.
+</blockquote>
+</details>
 
-### 4. "MCP Tool timeout or connection error"
+<details>
+<summary><strong>Recall returns a 'weak' or 'partial' quality signal</strong></summary>
 
-**Symptoms**: Your AI agent reports that it cannot connect to the Konteks server or the tool timed out.
-**Cause**: The MCP server process may have crashed, is taking too long to process a large project, is being launched through a slow package runner, or the direct `konteks-cli` command cannot find Node.js on `PATH`.
-**Solution**:
+<blockquote>
+Konteks could not find strong, direct implementation matches for your query.
 
-1. Install Konteks globally with the runtime you use: `bun add -g konteks-cli` for Bun users, or `npm install -g konteks-cli` for Node users.
-2. With Bun, configure your MCP client with `"command": "bunx"` and `"args": ["--bun", "konteks-cli", "mcp"]`. With Node, configure it with `"command": "konteks-cli"` and `"args": ["mcp"]`.
-3. Run `bunx --bun konteks-cli status` for Bun installs or `konteks-cli status` for npm installs to check project memory freshness.
-4. Ensure you are using a supported runtime (Bun 1.3+ or Node 22.13+). If you configure MCP with direct `konteks-cli`, Node must be on `PATH`.
-5. Check `.konteks/errors.log` for recent internal Konteks errors.
-6. Check the logs of your AI agent/host for connection-level errors.
+* **Refine your task:** Be specific and name the exact file or module.
+* **Rebuild the index:** Run `konteks rebuild` to scan recent changes and rebuild the [Derived Memory](glossary.md#derived-memory).
+* **Check ignore rules:** Verify the target files aren't being excluded by `.gitignore` or `.konteksignore`.
 
-### 5. "Secrets or sensitive data in recall"
+</blockquote>
+</details>
 
-**Symptoms**: Recall returns content containing API keys, passwords, or other sensitive information.
-**Cause**: Konteks indexed a file containing secrets that wasn't properly ignored.
-**Solution**:
+<details>
+<summary><strong>Durable memory is missing after a rebuild</strong></summary>
 
-1. Immediately add the sensitive file to your `.gitignore` or `.konteksignore`.
-2. Ask your MCP agent to call `konteks_forget` with a targeted `query` and the appropriate forget `mode`.
-3. Use `konteks rebuild` to ensure the stale index is cleared.
+<blockquote>
+You are either in the wrong project root, or the `.konteks/memory.sqlite` file was manually deleted. Running a rebuild only resets derived data (sections, entities); it does not touch durable data (like diary entries or observations).
 
-### 6. "Konteks MCP tool failed due to an internal error"
+Verify your current directory. If the file was deleted, restore `.konteks/memory.sqlite` from a backup.
+</blockquote>
+</details>
 
-**Symptoms**: An MCP tool returns a sanitized internal-error message without stack details.
-**Cause**: Konteks hides unexpected internal details from MCP clients by default.
-**Solution**: Inspect `.konteks/errors.log` in the project root. Each line is a JSON error entry with timestamp, surface, tool or prompt metadata, message, and stack trace when available. The log is local and redacted best-effort, but treat it as diagnostic data.
+<details>
+<summary><strong>Secrets or sensitive data appear in recall</strong></summary>
+
+<blockquote>
+Konteks indexed an unignored file containing sensitive information.
+
+1. Immediately add the file to `.gitignore` or `.konteksignore`.
+2. Have your MCP agent call `konteks_forget` with the targeted query and appropriate forget mode.
+3. Run `konteks rebuild` to completely wipe the stale index.
+
+</blockquote>
+</details>
