@@ -41,6 +41,8 @@ MCP tools validate project health silently before doing work. If memory is not i
 
 Save tools return after durable memory is written. Changed-project refresh, embedding generation, and sqlite-vec indexing continue as best-effort background maintenance, so semantic retrieval can lag briefly after a save. Run `konteks rebuild` when you need an explicit full repair pass.
 
+Forget modes differ by durability. `soft_delete` and `invalidate` hide or invalidate memory while preserving recoverable history; `hard_delete` physically removes the target from durable rows and retrieval/vector indexes.
+
 Example durable memory payload:
 
 ```json

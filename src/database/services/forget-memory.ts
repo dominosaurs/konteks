@@ -1,5 +1,8 @@
 import { randomUUID } from 'node:crypto'
+import { and, eq } from 'drizzle-orm'
+import getDb from '@/database/actions/_db'
 import appendMemoryEvent from '@/database/actions/append-memory-event'
+import deleteRetrievalDocuments from '@/database/actions/delete-retrieval-documents'
 import hardDeleteForgetTarget from '@/database/actions/hard-delete-forget-target'
 import invalidateRelation from '@/database/actions/invalidate-relation'
 import markForgotten from '@/database/actions/mark-forgotten'
@@ -7,8 +10,11 @@ import markSuppressed from '@/database/actions/mark-suppressed'
 import queryDiaries from '@/database/actions/query-diaries'
 import queryObservations from '@/database/actions/query-observations'
 import removeFromSearchIndex from '@/database/actions/remove-from-search-index'
+import { targetEmbeddings } from '@/database/schema'
 import { deleteDurableTargetGraph } from '@/database/services/durable-memory-graph'
 import type { ForgetTarget, TargetKind } from '@/database/support/forget-target'
+
+type RetrievalTargetType = 'diary' | 'memory' | 'section'
 
 export type ForgetInput = {
     id?: string
@@ -37,6 +43,9 @@ export default async function forgetMemory(
         }
 
         await removeFromSearchIndex(target.id)
+        if (mode === 'hard_delete') {
+            await deleteHardDeletedRetrievalArtifacts(target)
+        }
         if (target.kind === 'observation' || target.kind === 'diary_entry') {
             await deleteDurableTargetGraph(target.id)
         }
@@ -109,6 +118,48 @@ async function applyForget(
     }
 
     return markForgotten(target, reason)
+}
+
+async function deleteHardDeletedRetrievalArtifacts(
+    target: ForgetTarget,
+): Promise<void> {
+    const targetType = retrievalTargetType(target.kind)
+    if (!targetType) {
+        return
+    }
+
+    await deleteRetrievalDocuments(targetType, [target.id])
+    await deleteTargetEmbeddings(targetType, target.id)
+}
+
+async function deleteTargetEmbeddings(
+    targetType: RetrievalTargetType,
+    targetId: string,
+): Promise<void> {
+    const db = await getDb()
+    await db
+        .delete(targetEmbeddings)
+        .where(
+            and(
+                eq(targetEmbeddings.targetType, targetType),
+                eq(targetEmbeddings.targetId, targetId),
+            ),
+        )
+}
+
+function retrievalTargetType(
+    targetKind: TargetKind,
+): RetrievalTargetType | undefined {
+    if (targetKind === 'diary_entry') {
+        return 'diary'
+    }
+    if (targetKind === 'observation') {
+        return 'memory'
+    }
+    if (targetKind === 'section') {
+        return 'section'
+    }
+    return undefined
 }
 
 function inferKind(id: string): TargetKind {
