@@ -31,7 +31,7 @@ Konteks stores memory artifacts inside your repository, typically in a `.konteks
 We believe that setup should not be a barrier. Konteks can be tried and initialized through the JavaScript package ecosystem without a global install.
 
 * Use one-off runners such as `npx` or `bunx` for setup and trial commands.
-* Use an installed `konteks-cli` command for MCP server startup so agents do not wait on package resolution.
+* For MCP server startup, use the command form that matches your runtime: Bun users can use `bunx --bun konteks-cli mcp`, while Node users can use the installed `konteks-cli mcp` command.
 * No separate database service or external account required.
 * Works anywhere Node.js or Bun is available.
 

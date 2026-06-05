@@ -35,19 +35,34 @@ Do not commit `.konteks/`; initialization adds it to `.gitignore` so project mem
 
 ### 2. Set Up MCP
 
-Install Konteks before configuring MCP. MCP clients expect the server process to start quickly, while one-off runners such as `npx`, `bunx`, `pnpm dlx`, and `yarn dlx` may spend time resolving or downloading packages before the server starts.
+Install Konteks before configuring MCP. Use the global install command that matches your runtime.
 
 ```bash
-npm install -g konteks-cli
-
-# or, with Bun:
 bun add -g konteks-cli
+npm install -g konteks-cli
+pnpm add -g konteks-cli
+yarn global add konteks-cli
 ```
 
-Add Konteks to your MCP-compatible coding agent configuration before opening the agent.
+Add one MCP server definition before opening the agent.
 
 > [!TIP]
 > **Global Registration**: Register Konteks globally in your agent's config so you don't have to repeat this setup for every project.
+
+For Bun users:
+
+```json
+{
+  "mcpServers": {
+    "konteks": {
+      "command": "bunx",
+      "args": ["--bun", "konteks-cli", "mcp"]
+    }
+  }
+}
+```
+
+For Node (npm/yarn/pnpm) users:
 
 ```json
 {
@@ -63,7 +78,7 @@ Add Konteks to your MCP-compatible coding agent configuration before opening the
 MCP configuration locations are agent-specific. Prefer a global registration when your agent supports it, and restart or reload the agent after changing its MCP configuration.
 
 > [!IMPORTANT]
-> Konteks exposes its lifecycle workflows as [MCP Prompts](https://modelcontextprotocol.io/docs/concepts/prompts). If your agent does not show MCP Prompts in its autocomplete UI, run `konteks-cli install-skills --global` once after installation to use the lifecycle prompts as native skills. See [Compatibility](../api/cli.md#compatibility-skills).
+> Konteks exposes its lifecycle workflows as [MCP Prompts](https://modelcontextprotocol.io/docs/concepts/prompts). If your agent does not show MCP Prompts in its autocomplete UI, run `bunx --bun konteks-cli install-skills --global` for Bun installs or `konteks-cli install-skills --global` for npm installs. See [Compatibility](../api/cli.md#compatibility-skills).
 
 ## From This Point On
 

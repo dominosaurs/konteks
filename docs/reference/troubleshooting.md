@@ -33,13 +33,13 @@ This guide helps you resolve common issues encountered while setting up or using
 ### 4. "MCP Tool timeout or connection error"
 
 **Symptoms**: Your AI agent reports that it cannot connect to the Konteks server or the tool timed out.
-**Cause**: The MCP server process may have crashed, is taking too long to process a large project, or is being launched through a one-off package runner that must resolve or download packages before the server starts.
+**Cause**: The MCP server process may have crashed, is taking too long to process a large project, is being launched through a slow package runner, or the direct `konteks-cli` command cannot find Node.js on `PATH`.
 **Solution**:
 
-1. Install Konteks globally with `npm install -g konteks-cli` or `bun add -g konteks-cli`.
-2. Configure your MCP client with `"command": "konteks-cli"` and `"args": ["mcp"]`, not `npx`, `bunx`, `pnpm dlx`, or `yarn dlx`.
-3. Run `konteks-cli status` to check project memory freshness.
-4. Ensure you are using a supported runtime (Bun 1.3+ or Node 22.13+).
+1. Install Konteks globally with the runtime you use: `bun add -g konteks-cli` for Bun users, or `npm install -g konteks-cli` for Node users.
+2. With Bun, configure your MCP client with `"command": "bunx"` and `"args": ["--bun", "konteks-cli", "mcp"]`. With Node, configure it with `"command": "konteks-cli"` and `"args": ["mcp"]`.
+3. Run `bunx --bun konteks-cli status` for Bun installs or `konteks-cli status` for npm installs to check project memory freshness.
+4. Ensure you are using a supported runtime (Bun 1.3+ or Node 22.13+). If you configure MCP with direct `konteks-cli`, Node must be on `PATH`.
 5. Check `.konteks/errors.log` for recent internal Konteks errors.
 6. Check the logs of your AI agent/host for connection-level errors.
 
