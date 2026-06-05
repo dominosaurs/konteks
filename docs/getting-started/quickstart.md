@@ -28,10 +28,10 @@ yarn dlx konteks-cli init
 
 * Creates a `.konteks/` directory for local memory storage.
 * Initializes the `memory.sqlite` substrate.
-* Adds `.konteks/` to your `.gitignore`.
+* Creates `.konteks/.gitignore` so memory artifacts stay untracked.
 * Extracts and indexes the current project state.
 
-Do not commit `.konteks/`; initialization adds it to `.gitignore` so project memory stays local.
+Do not commit `.konteks/`; initialization keeps project memory untracked with a local `.konteks/.gitignore`.
 
 ### 2. Set Up MCP
 

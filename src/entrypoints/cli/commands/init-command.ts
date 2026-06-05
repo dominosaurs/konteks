@@ -38,7 +38,7 @@ export default class InitCommand extends BaseCommand {
                 .print(color => color.primary('Initializing project memory'))
                 .print('')
 
-            await ensureKonteksGitignore(context.projectRoot)
+            await ensureKonteksGitignore(context.memoryDir)
             const files = await scanProjectFiles(context.projectRoot)
             const selection = await reviewDetectedGrammars(files)
 
@@ -96,7 +96,7 @@ async function initializeProjectMemory(options: {
 
     await writeInitialMemoryFiles(context, options.grammars ?? [])
     await ensureProjectMemory()
-    await ensureKonteksGitignore(context.projectRoot)
+    await ensureKonteksGitignore(context.memoryDir)
 
     const extractor = createProjectExtractor({
         onProgress: options.onProgress,
@@ -144,8 +144,10 @@ async function writeInitialMemoryFiles(
     })
 }
 
-async function ensureKonteksGitignore(projectRoot: string): Promise<void> {
-    const gitignorePath = join(projectRoot, '.gitignore')
+async function ensureKonteksGitignore(memoryDir: string): Promise<void> {
+    await mkdir(memoryDir)
+
+    const gitignorePath = join(memoryDir, '.gitignore')
     const existing = await readFile(gitignorePath, 'utf8').catch(error => {
         if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
             return ''
@@ -154,17 +156,17 @@ async function ensureKonteksGitignore(projectRoot: string): Promise<void> {
         throw error
     })
 
-    if (hasKonteksIgnoreEntry(existing)) {
+    if (hasKonteksCatchAllIgnore(existing)) {
         return
     }
 
     const prefix = existing.length > 0 && !existing.endsWith('\n') ? '\n' : ''
-    await writeFile(gitignorePath, `${existing}${prefix}.konteks/\n`)
+    await writeFile(gitignorePath, `${existing}${prefix}*\n`)
 }
 
-function hasKonteksIgnoreEntry(content: string): boolean {
+function hasKonteksCatchAllIgnore(content: string): boolean {
     return content
         .split(/\r?\n/)
         .map(line => line.trim())
-        .some(line => line === '.konteks' || line === '.konteks/')
+        .some(line => line === '*' || line === '/*')
 }
