@@ -67,6 +67,9 @@ describe('mcp/prompts', () => {
             },
         ])
         expect(result?.messages[0]?.content.text).toContain('konteks_warm_up')
+        expect(result?.messages[0]?.content.text).toContain(
+            'If the warm-up result includes an `update` object',
+        )
     })
 
     it('renders missing optional placeholders as empty strings', () => {

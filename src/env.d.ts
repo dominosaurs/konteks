@@ -31,3 +31,14 @@ declare module '*.wasm' {
     const path: string
     export default path
 }
+
+declare var __konteksCheckForUpdateForTests:
+    | (() => Promise<
+          | {
+                command: string
+                current: string
+                latest: string
+            }
+          | undefined
+      >)
+    | undefined

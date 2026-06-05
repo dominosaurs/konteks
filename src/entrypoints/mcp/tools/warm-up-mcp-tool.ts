@@ -7,6 +7,7 @@ import {
     updateChangedProjectMemorySilently,
 } from '@/modules/memory/runtime'
 import { estimateCharacterTokens } from '@/support/format/tokens'
+import { checkForKonteksUpdate } from '@/support/update-check'
 import type {
     MemorySearchResult,
     RecallPackage,
@@ -62,15 +63,24 @@ export default class WarmUpMcpTool extends BaseMcpTool<Input> {
             )
         }
 
-        return toWarmUpOutput({ recall, warmUp })
+        return toWarmUpOutput({
+            recall,
+            update: await checkForKonteksUpdate(),
+            warmUp,
+        })
     }
 }
 
 function toWarmUpOutput(input: {
     warmUp: WarmUpContext
     recall?: RecallPackage
+    update?: {
+        command: string
+        current: string
+        latest: string
+    }
 }): object {
-    const { warmUp, recall } = input
+    const { warmUp, recall, update } = input
     return {
         description: warmUp.description,
         entryPoints: warmUp.entryPoints,
@@ -78,6 +88,14 @@ function toWarmUpOutput(input: {
         highlights: warmUp.highlights.map(toWarmUpHighlightOutput),
         recall: recall ? toFocusedRecallOutput(recall) : undefined,
         technologies: warmUp.technologies,
+        update: update
+            ? {
+                  available: true,
+                  command: update.command,
+                  current: update.current,
+                  latest: update.latest,
+              }
+            : undefined,
     }
 }
 
