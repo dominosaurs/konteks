@@ -10,6 +10,7 @@ import type { ProjectMetadata } from './extract-project-metadata'
 import type { ScannedFile } from './file-scan'
 import { initTreeSitterWithSelectedGrammars } from './grammar-loader'
 import persistPreparedFileSections from './persist-prepared-file-sections'
+import type { PreparedFile } from './prepare-file-sections'
 import prepareFileSections from './prepare-file-sections'
 import rebuildModuleArtifacts, {
     type ModuleArtifactKey,
@@ -19,6 +20,7 @@ import rebuildModuleArtifacts, {
 import {
     clearExtractedSections,
     clearExtractedSectionsForPaths,
+    recordExtractedSuppressionsForPaths,
 } from './section-cleanup'
 import TreeSitterEngine from './tree-sitter-engine'
 
@@ -95,13 +97,127 @@ export default async function extractSections(
         phase: 'database',
         status: 'progress',
     })
+    if (options.mode === 'changed') {
+        const preparedFiles: PreparedFile[] = []
+        await recordExtractedSuppressionsForPaths(affectedPaths)
+        if (files.length > 0) {
+            progress?.({
+                message: `Extracting ${files.length} files`,
+                phase: 'sections',
+                status: 'start',
+                total: files.length,
+            })
+            await yieldToProgressRenderer()
+        }
+
+        for (const [fileIndex, file] of files.entries()) {
+            const preparedFile = await prepareFileSections({
+                context,
+                engine,
+                file,
+            })
+            preparedFiles.push(preparedFile)
+
+            if (
+                preparedFile.parserEngine === 'tree_sitter' &&
+                preparedFile.parserStatus === 'ok'
+            ) {
+                parserUsedFiles += 1
+            } else if (
+                preparedFile.sections.some(section => section.kind === 'code')
+            ) {
+                parserFallbackFiles += 1
+            }
+
+            if (preparedFile.truncated) {
+                filesTruncatedBySectionLimit += 1
+            }
+
+            sectionCount += preparedFile.sections.length
+            progress?.({
+                current: fileIndex + 1,
+                message: `Extracted ${file.path} (${preparedFile.sections.length} sections)`,
+                path: file.path,
+                phase: 'sections',
+                sectionCount: sectionCount,
+                status: 'progress',
+                total: files.length,
+            })
+            await yieldToProgressRenderer()
+        }
+
+        if (files.length > 0) {
+            progress?.({
+                current: files.length,
+                message: `Extracted ${sectionCount} sections`,
+                parserCount: loadedParserCount,
+                phase: 'sections',
+                sectionCount: sectionCount,
+                status: 'done',
+                total: files.length,
+            })
+        }
+        progress?.({
+            message: 'Rebuilding module artifacts and retrieval index',
+            phase: 'modules',
+            status: 'start',
+        })
+
+        await withTransaction(async () => {
+            await clearExtractedSectionsForPaths(affectedPaths)
+            const rootNode = await upsertNode({
+                name: 'Project Files',
+                summary: 'Files extracted from the current project.',
+            })
+            rootNodeId = rootNode.id
+
+            for (const preparedFile of preparedFiles) {
+                if (preparedFile.sections.length > 0) {
+                    await persistPreparedFileSections({
+                        extractedAt,
+                        preparedFile,
+                        rootNodeId,
+                    })
+                }
+            }
+
+            const currentModuleKeys =
+                await queryModuleArtifactKeysForPaths(changedPaths)
+            await rebuildChangedModuleArtifacts(extractedAt, {
+                canUpdateEmbeddings: options.canUpdateEmbeddings ?? false,
+                metadata: options.metadata,
+                metadataChanged: hasMetadataRelevantPath(affectedPaths),
+                moduleKeys: dedupeModuleKeys([
+                    ...previousModuleKeys,
+                    ...currentModuleKeys,
+                ]),
+            })
+
+            await appendMemoryEvent({
+                actor: 'cli',
+                eventType: 'project_extracted',
+                id: `event_${contentHash(`${context.projectRoot}:${extractedAt}`).slice(0, 32)}`,
+                subjectType: 'project',
+                summary: `Extracted ${files.length} files into ${sectionCount} sections.`,
+            })
+        })
+        progress?.({
+            message: 'Module artifacts and retrieval index ready',
+            phase: 'modules',
+            status: 'done',
+        })
+
+        return {
+            filesTruncatedBySectionLimit,
+            loadedParserCount,
+            parserFallbackFiles,
+            parserUsedFiles,
+            sectionCount: sectionCount,
+        }
+    }
+
     await withTransaction(async () => {
-        if (options.mode === 'changed') {
-            await clearExtractedSectionsForPaths([
-                ...files.map(file => file.path),
-                ...(options.deletedPaths ?? []),
-            ])
-        } else if (options.mode !== 'resume') {
+        if (options.mode !== 'resume') {
             await clearExtractedSections()
         }
         const rootNode = await upsertNode({
@@ -180,25 +296,9 @@ export default async function extractSections(
         phase: 'modules',
         status: 'start',
     })
-    const currentModuleKeys =
-        options.mode === 'changed'
-            ? await queryModuleArtifactKeysForPaths(changedPaths)
-            : []
     await withTransaction(async () => {
-        if (options.mode === 'changed') {
-            await rebuildChangedModuleArtifacts(extractedAt, {
-                canUpdateEmbeddings: options.canUpdateEmbeddings ?? false,
-                metadata: options.metadata,
-                metadataChanged: hasMetadataRelevantPath(affectedPaths),
-                moduleKeys: dedupeModuleKeys([
-                    ...previousModuleKeys,
-                    ...currentModuleKeys,
-                ]),
-            })
-        } else {
-            await rebuildModuleArtifacts(extractedAt, options.metadata)
-            await reindexRetrievalDocumentFts()
-        }
+        await rebuildModuleArtifacts(extractedAt, options.metadata)
+        await reindexRetrievalDocumentFts()
 
         await appendMemoryEvent({
             actor: 'cli',

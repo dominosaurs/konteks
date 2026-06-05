@@ -1,10 +1,15 @@
 import { afterEach, describe, expect, it } from 'bun:test'
-import { mkdtemp, readFile, unlink, writeFile } from 'node:fs/promises'
+import { mkdtemp, readdir, readFile, unlink, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { eq, sql } from 'drizzle-orm'
 import getDb from '@/database/actions/_db'
-import { targetEmbeddings, vectorIndexEntries } from '@/database/schema'
+import {
+    sections,
+    targetEmbeddings,
+    vectorIndexEntries,
+} from '@/database/schema'
+import forgetMemory from '@/database/services/forget-memory'
 import {
     saveKonteksDiary,
     saveKonteksMemories,
@@ -115,6 +120,12 @@ describe('extractProject', () => {
             'src/index.txt',
         ])
         expect(manifest?.summaryHash).toHaveLength(64)
+        const memoryEntries = await readdir(context.memoryDir)
+        expect(
+            memoryEntries.some(entry =>
+                /^\.extraction-manifest\./u.test(entry),
+            ),
+        ).toBe(false)
     })
 
     it('reports fresh status after extraction and stale after a file change', async () => {
@@ -380,6 +391,112 @@ describe('extractProject', () => {
         expect(paths).not.toContain('README.md')
         expect(paths).toContain('src/index.txt')
         expect(paths).toContain('src/new.txt')
+    })
+
+    it('rolls back changed extraction database writes when persistence fails', async () => {
+        const projectRoot = await makeTempProject()
+        const context = await withProjectRoot(projectRoot, () =>
+            loadProjectContext(),
+        )
+        await extractTestProject(context, 'full')
+        const db = await getDb()
+        const beforeSections = await db
+            .select({
+                contentInline: sections.contentInline,
+                path: sections.path,
+            })
+            .from(sections)
+
+        await writeFile(
+            join(projectRoot, 'src', 'index.txt'),
+            'Changed content that should roll back.\n',
+        )
+        await writeFile(
+            join(projectRoot, 'src', 'new.txt'),
+            'New content that should roll back.\n',
+        )
+        await db.run(sql`
+create temp trigger fail_changed_project_event
+before insert on memory_events
+when new.event_type = 'project_extracted'
+begin
+    select raise(abort, 'forced changed extraction rollback');
+end;
+`)
+
+        await expect(extractTestProject(context, 'changed')).rejects.toThrow(
+            'memory_events',
+        )
+
+        const afterSections = await db
+            .select({
+                contentInline: sections.contentInline,
+                path: sections.path,
+            })
+            .from(sections)
+        const manifest = await readExtractionManifest(context.memoryDir)
+
+        expect(afterSections).toEqual(beforeSections)
+        expect(
+            afterSections.some(section => section.path === 'src/new.txt'),
+        ).toBe(false)
+        expect(
+            afterSections.some(section =>
+                section.contentInline?.includes('Changed content'),
+            ),
+        ).toBe(false)
+        expect(manifest?.mode).toBe('full')
+    })
+
+    it('does not reintroduce suppressed sections during changed extraction', async () => {
+        const projectRoot = await makeTempProject()
+        const context = await withProjectRoot(projectRoot, () =>
+            loadProjectContext(),
+        )
+        await writeFile(
+            join(projectRoot, 'README.md'),
+            '# Suppressed\nStable suppressed text.\n\n# Changed\nOld visible text.\n',
+        )
+        await extractTestProject(context, 'full')
+        const db = await getDb()
+        const readmeSections = await db
+            .select({
+                contentHash: sections.contentHash,
+                contentInline: sections.contentInline,
+                id: sections.id,
+                path: sections.path,
+            })
+            .from(sections)
+            .where(eq(sections.path, 'README.md'))
+        const section = readmeSections.find(row =>
+            row.contentInline?.includes('Stable suppressed text.'),
+        )
+
+        expect(section).toBeDefined()
+        await forgetMemory({
+            id: section?.id,
+            mode: 'invalidate',
+            reason: 'suppress extracted section',
+        })
+        await writeFile(
+            join(projectRoot, 'README.md'),
+            '# Suppressed\nStable suppressed text.\n\n# Changed\nNew visible text.\n',
+        )
+
+        await extractTestProject(context, 'changed')
+
+        const rows = await db
+            .select({
+                contentHash: sections.contentHash,
+                id: sections.id,
+                path: sections.path,
+            })
+            .from(sections)
+            .where(eq(sections.path, 'README.md'))
+
+        expect(rows.some(row => row.contentHash === section?.contentHash)).toBe(
+            false,
+        )
     })
 
     it('changed mode is a no-op when extraction is already current', async () => {
