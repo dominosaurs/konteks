@@ -1,6 +1,6 @@
 # CLI API
 
-The Konteks CLI manages local project memory. It can run through `npx`, `bunx`, `pnpm dlx`, or `yarn dlx` for one-off commands, but MCP server registration should use an installed `konteks-cli` executable for fast startup.
+The Konteks CLI manages local project memory. It can run through `npx`, `bunx`, `pnpm dlx`, or `yarn dlx` for one-off commands, but MCP server registration should use the installed command form that matches the user's runtime.
 
 For terms, see the [Glossary](../reference/glossary.md).
 
@@ -22,7 +22,7 @@ For terms, see the [Glossary](../reference/glossary.md).
 | `konteks install-skills` | Compatibility | Install Konteks skills for agents without MCP prompt support. |
 
 > [!IMPORTANT]
-> Configure MCP clients with an installed command such as `"command": "konteks-cli", "args": ["mcp"]`. Avoid one-off runners for MCP server startup because package resolution or downloads can exceed the client startup timeout.
+> Bun users should configure MCP clients with `"command": "bunx", "args": ["--bun", "konteks-cli", "mcp"]`. Node users can configure MCP with `"command": "konteks-cli", "args": ["mcp"]`; the direct `konteks-cli` command requires Node.js on `PATH` because the current package bin uses a Node shebang.
 
 ## Memory Portability
 

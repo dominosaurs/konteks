@@ -10,7 +10,6 @@ Memory artifacts are stored directly inside your repository, exposing compact, t
 
 ## 🚀 Key Features
 
-* **One-Off Setup**: Try or initialize Konteks with `npx` or `bunx`; use an installed CLI for MCP startup.
 * **Language-Aware**: Understands code structure across [various file types](src/assets/grammar-registry.ts).
 * **Local-First**: Your project memory stays in your repo—no cloud, no accounts.
 * **Token-Efficient**: High-fidelity context synthesis designed for LLM economy.
