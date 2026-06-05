@@ -1,3 +1,4 @@
+import { AsyncLocalStorage } from 'node:async_hooks'
 import { access, readFile, writeFile } from 'node:fs/promises'
 import { dirname, join, resolve } from 'node:path'
 import type {
@@ -7,6 +8,10 @@ import type {
 } from '@/types/project'
 
 export type { LoadedProjectContext }
+
+const loadedProjectContext = new AsyncLocalStorage<
+    LoadedProjectContext | undefined
+>()
 
 export function createDefaultConfig(): KonteksConfig {
     return {
@@ -27,6 +32,15 @@ export async function writeProjectConfig(
 }
 
 export async function resolveProjectContext(): Promise<ProjectContext> {
+    const bound = loadedProjectContext.getStore()
+    if (bound) {
+        return {
+            configPath: bound.configPath,
+            memoryDir: bound.memoryDir,
+            projectRoot: bound.projectRoot,
+        }
+    }
+
     const projectRoot = await findProjectRoot(process.cwd())
     const memoryDir = join(projectRoot, '.konteks')
 
@@ -38,6 +52,11 @@ export async function resolveProjectContext(): Promise<ProjectContext> {
 }
 
 export async function loadProjectContext(): Promise<LoadedProjectContext> {
+    const bound = loadedProjectContext.getStore()
+    if (bound) {
+        return bound
+    }
+
     const context = await resolveProjectContext()
     const config = await readConfig(context.configPath)
 
@@ -46,6 +65,13 @@ export async function loadProjectContext(): Promise<LoadedProjectContext> {
         config: config.config,
         configExists: config.exists,
     }
+}
+
+export function withLoadedProjectContext<T>(
+    context: LoadedProjectContext,
+    operation: () => T,
+): T {
+    return loadedProjectContext.run(context, operation)
 }
 
 async function findProjectRoot(start: string): Promise<string> {

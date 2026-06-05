@@ -31,12 +31,39 @@ class ThrowingEmbeddingProvider implements EmbeddingProviderContract {
     }
 }
 
+class DeferredEmbeddingProvider implements EmbeddingProviderContract {
+    public readonly dimensions = 8
+    public readonly model = 'fake/deferred'
+    public readonly started: Promise<void>
+    private releaseEmbedding!: () => void
+    private resolveStarted!: () => void
+
+    public constructor() {
+        this.started = new Promise(resolve => {
+            this.resolveStarted = resolve
+        })
+    }
+
+    public release(): void {
+        this.releaseEmbedding()
+    }
+
+    public async embed(texts: string[]): Promise<Float32Array[]> {
+        this.resolveStarted()
+        await new Promise<void>(resolve => {
+            this.releaseEmbedding = resolve
+        })
+        return texts.map(() => new Float32Array([1, 0, 0, 0, 0, 0, 0, 0]))
+    }
+}
+
 beforeEach(() => {
     previousSqliteTestDatabase = process.env.KONTEKS_SQLITE_TEST_DATABASE
     process.env.KONTEKS_SQLITE_TEST_DATABASE = 'file'
 })
 
 afterEach(async () => {
+    await globalThis.__konteksWaitForMemoryMaintenanceForTests?.()
     if (previousSqliteTestDatabase === undefined) {
         delete process.env.KONTEKS_SQLITE_TEST_DATABASE
     } else {
@@ -134,7 +161,110 @@ describe('save memory embeddings', () => {
             expect(await embeddingRowsFor('memory')).toHaveLength(0)
         })
     })
+
+    it('returns before background embedding finishes', async () => {
+        const projectRoot = await makeInitializedProject()
+        const provider = new DeferredEmbeddingProvider()
+
+        await withProjectRoot(projectRoot, async () => {
+            const context = await loadProjectContext()
+            const save = saveKonteksMemories(
+                context,
+                {
+                    memories: [
+                        {
+                            content:
+                                'Background durable memory embedding should not block the save result.',
+                            importance: 4,
+                            kind: 'decision',
+                        },
+                    ],
+                },
+                {
+                    embeddingMode: 'background',
+                    embeddingProvider: provider,
+                },
+            )
+            await provider.started
+            const result = await raceSaveResult(save, () => provider.release())
+
+            const memoryId = result.memoryIds?.[0]
+            if (!memoryId) {
+                throw new Error('expected memory id')
+            }
+            await provider.started
+            expect(await rowsForObservation(memoryId)).toHaveLength(1)
+            expect(await embeddingRowsFor('memory')).toHaveLength(0)
+
+            provider.release()
+            await globalThis.__konteksWaitForMemoryMaintenanceForTests?.()
+            await expectTargetIndexed(memoryId, 'memory', 'fake/deferred')
+        })
+    })
+
+    it('runs background embedding against the saved project when cwd changes', async () => {
+        const sourceRoot = await makeInitializedProject()
+        const otherRoot = await makeInitializedProject()
+        const provider = new DeferredEmbeddingProvider()
+
+        const save = withProjectRoot(sourceRoot, async () => {
+            const context = await loadProjectContext()
+            return await saveKonteksMemories(
+                context,
+                {
+                    memories: [
+                        {
+                            content:
+                                'Background embedding should keep the captured project context.',
+                            importance: 4,
+                            kind: 'constraint',
+                        },
+                    ],
+                },
+                {
+                    embeddingMode: 'background',
+                    embeddingProvider: provider,
+                },
+            )
+        })
+        await provider.started
+        const result = await raceSaveResult(save, () => provider.release())
+
+        const memoryId = result.memoryIds?.[0]
+        if (!memoryId) {
+            throw new Error('expected memory id')
+        }
+
+        await withProjectRoot(otherRoot, async () => {
+            provider.release()
+            await globalThis.__konteksWaitForMemoryMaintenanceForTests?.()
+        })
+
+        await withProjectRoot(sourceRoot, () =>
+            expectTargetIndexed(memoryId, 'memory', 'fake/deferred'),
+        )
+        await withProjectRoot(otherRoot, async () => {
+            expect(await embeddingRowsFor('memory')).toHaveLength(0)
+        })
+    })
 })
+
+async function raceSaveResult(
+    save: Promise<Awaited<ReturnType<typeof saveKonteksMemories>>>,
+    onTimeout: () => void,
+): Promise<Awaited<ReturnType<typeof saveKonteksMemories>>> {
+    const result = await Promise.race([
+        save,
+        new Promise<'timed-out'>(resolve => {
+            setTimeout(() => resolve('timed-out'), 50)
+        }),
+    ])
+    if (result === 'timed-out') {
+        onTimeout()
+    }
+    expect(result).not.toBe('timed-out')
+    return result as Awaited<ReturnType<typeof saveKonteksMemories>>
+}
 
 describe('save diary embeddings', () => {
     it('embeds a newly saved diary retrieval document', async () => {
@@ -213,6 +343,7 @@ async function withProjectRoot<T>(
 async function expectTargetIndexed(
     targetId: string,
     targetType: 'diary' | 'memory',
+    model = 'fake/all-MiniLM-L6-v2',
 ): Promise<void> {
     const retrievalRows = await retrievalRowsFor(targetId, targetType)
     const embeddingRows = await embeddingRowsFor(targetType)
@@ -220,7 +351,7 @@ async function expectTargetIndexed(
     expect(retrievalRows).toHaveLength(1)
     expect(embeddingRows).toHaveLength(1)
     expect(embeddingRows[0]).toMatchObject({
-        model: 'fake/all-MiniLM-L6-v2',
+        model,
         targetId,
         targetType,
     })

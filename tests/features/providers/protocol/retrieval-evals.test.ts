@@ -65,6 +65,7 @@ beforeEach(() => {
 })
 
 afterEach(async () => {
+    await globalThis.__konteksWaitForMemoryMaintenanceForTests?.()
     await globalThis.__konteksWaitForVectorIndexRepairsForTests?.()
     globalThis.__konteksEmbeddingProviderForTests = undefined
     globalThis.__konteksVectorIndexConnectionFactoryForTests = undefined
@@ -242,6 +243,7 @@ describe('retrieval quality evals', () => {
                     'Saved structured diary context after refreshing changed project memory.',
             }),
         )
+        await globalThis.__konteksWaitForMemoryMaintenanceForTests?.()
         const text = extractText(result)
         const manifest = await readExtractionManifest(context.memoryDir)
 

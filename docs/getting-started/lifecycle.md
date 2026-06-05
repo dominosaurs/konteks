@@ -66,6 +66,8 @@ Use the `/konteks-save` prompt to persist the outcome of the current agent sessi
 
 A single session can contain one task or several related tasks. The agent saves compact structured durable memories first, then writes one session diary summarizing the outcome. Durable memories should be future-useful rules, decisions, constraints, preferences, blockers, or code insights. The diary should be a compact summary of the task, outcome, verification, unresolved questions, and exact next steps.
 
+Save confirms durable persistence immediately. Project refresh and vector indexing may finish shortly afterward in background maintenance.
+
 > [!TIP]
 > Recommendation: Prefer saving when the session is complete or about to be closed. If progress is partial, the session diary should include pending items and exact next steps.
 

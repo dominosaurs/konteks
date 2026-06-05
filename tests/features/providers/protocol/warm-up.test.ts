@@ -44,6 +44,7 @@ describe('konteks_warm_up', () => {
     })
 
     afterEach(async () => {
+        await globalThis.__konteksWaitForMemoryMaintenanceForTests?.()
         if (previousDisableSharedEmbeddingProvider === undefined) {
             delete process.env.KONTEKS_DISABLE_SHARED_EMBEDDING_PROVIDER
         } else {

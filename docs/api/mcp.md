@@ -39,6 +39,8 @@ Tools are lower-level callable operations used by agents and debugging workflows
 
 MCP tools validate project health silently before doing work. If memory is not initialized or a derived-memory rebuild is required, the tool fails with a short actionable error instead of returning status context.
 
+Save tools return after durable memory is written. Changed-project refresh, embedding generation, and sqlite-vec indexing continue as best-effort background maintenance, so semantic retrieval can lag briefly after a save. Run `konteks rebuild` when you need an explicit full repair pass.
+
 Example durable memory payload:
 
 ```json
