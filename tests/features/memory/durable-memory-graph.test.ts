@@ -2,14 +2,25 @@ import { afterEach, describe, expect, it } from 'bun:test'
 import { mkdtemp, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
+import { and, eq } from 'drizzle-orm'
+import getDb from '@/database/actions/_db'
 import historicalRelations from '@/database/actions/historical-relations'
 import traverseNeighbors from '@/database/actions/traverse-neighbors'
+import {
+    diaryEntries,
+    observations,
+    retrievalDocuments,
+    retrievalDocumentsFts,
+    targetEmbeddings,
+    vectorIndexEntries,
+} from '@/database/schema'
 import forgetMemory from '@/database/services/forget-memory'
 import { entityIdFor } from '@/database/services/graph'
 import {
     saveKonteksDiary,
     saveKonteksMemories,
 } from '@/database/services/save-memory'
+import searchMemory from '@/database/services/search-memory'
 import { extractProject } from '@/modules/extraction/extract-project'
 import recallRepositoryMemory from '@/modules/memory/recall-repository-memory'
 import { loadProjectContext } from '@/modules/project/context'
@@ -182,6 +193,76 @@ describe('durable memory graph projection', () => {
         await expect(
             traverseNeighbors(entityIdFor('memory', memoryId)),
         ).resolves.toEqual([])
+    })
+
+    it('removes durable memory retrieval and vector artifacts when hard deleted', async () => {
+        const projectRoot = await makeExtractedProject()
+        process.chdir(projectRoot)
+        const context = await loadProjectContext()
+        const phrase =
+            'Hard delete should remove durable memory retrieval vector artifacts.'
+        const result = await saveKonteksMemories(
+            context,
+            {
+                memories: [
+                    {
+                        content: phrase,
+                        importance: 4,
+                        kind: 'constraint',
+                    },
+                ],
+            },
+            { embeddingProvider: new FakeEmbeddingProvider() },
+        )
+        const memoryId = result.memoryIds?.[0]
+        if (!memoryId) {
+            throw new Error('expected memory id')
+        }
+
+        await expectRetrievalArtifacts(memoryId, 'memory', 1)
+
+        await forgetMemory({
+            id: memoryId,
+            mode: 'hard_delete',
+            reason: 'hard delete cleanup test',
+        })
+
+        await expect(rowsForObservation(memoryId)).resolves.toHaveLength(0)
+        await expectRetrievalArtifacts(memoryId, 'memory', 0)
+        await expectSearchToOmit(phrase)
+    })
+
+    it('removes diary retrieval and vector artifacts when hard deleted', async () => {
+        const projectRoot = await makeExtractedProject()
+        process.chdir(projectRoot)
+        const context = await loadProjectContext()
+        const phrase =
+            'Hard delete should remove durable diary retrieval vector artifacts.'
+        const diary = await saveKonteksDiary(
+            context,
+            {
+                subject: 'hard delete diary cleanup',
+                summary: phrase,
+                tags: ['forget'],
+            },
+            { embeddingProvider: new FakeEmbeddingProvider() },
+        )
+        const diaryId = diary.diaryId
+        if (!diaryId) {
+            throw new Error('expected diary id')
+        }
+
+        await expectRetrievalArtifacts(diaryId, 'diary', 1)
+
+        await forgetMemory({
+            id: diaryId,
+            mode: 'hard_delete',
+            reason: 'hard delete diary cleanup test',
+        })
+
+        await expect(rowsForDiary(diaryId)).resolves.toHaveLength(0)
+        await expectRetrievalArtifacts(diaryId, 'diary', 0)
+        await expectSearchToOmit(phrase)
     })
 
     it('supersedes prior decision graph claims and recalls them as history', async () => {
@@ -396,4 +477,107 @@ async function makeExtractedProject(): Promise<string> {
     }
 
     return projectRoot
+}
+
+async function expectRetrievalArtifacts(
+    targetId: string,
+    targetType: 'diary' | 'memory' | 'section',
+    expectedCount: number,
+): Promise<void> {
+    await expect(retrievalRowsFor(targetId, targetType)).resolves.toHaveLength(
+        expectedCount,
+    )
+    await expect(
+        retrievalFtsRowsFor(targetId, targetType),
+    ).resolves.toHaveLength(expectedCount)
+    await expect(embeddingRowsFor(targetId, targetType)).resolves.toHaveLength(
+        expectedCount,
+    )
+    await expect(
+        vectorIndexRowsFor(targetId, targetType),
+    ).resolves.toHaveLength(expectedCount)
+}
+
+async function retrievalRowsFor(
+    targetId: string,
+    targetType: 'diary' | 'memory' | 'section',
+) {
+    const db = await getDb()
+    return await db
+        .select()
+        .from(retrievalDocuments)
+        .where(
+            and(
+                eq(retrievalDocuments.targetId, targetId),
+                eq(retrievalDocuments.targetType, targetType),
+            ),
+        )
+}
+
+async function retrievalFtsRowsFor(
+    targetId: string,
+    targetType: 'diary' | 'memory' | 'section',
+) {
+    const db = await getDb()
+    return await db
+        .select()
+        .from(retrievalDocumentsFts)
+        .where(
+            and(
+                eq(retrievalDocumentsFts.targetId, targetId),
+                eq(retrievalDocumentsFts.targetType, targetType),
+            ),
+        )
+}
+
+async function embeddingRowsFor(
+    targetId: string,
+    targetType: 'diary' | 'memory' | 'section',
+) {
+    const db = await getDb()
+    return await db
+        .select()
+        .from(targetEmbeddings)
+        .where(
+            and(
+                eq(targetEmbeddings.targetId, targetId),
+                eq(targetEmbeddings.targetType, targetType),
+            ),
+        )
+}
+
+async function vectorIndexRowsFor(
+    targetId: string,
+    targetType: 'diary' | 'memory' | 'section',
+) {
+    const db = await getDb()
+    return await db
+        .select()
+        .from(vectorIndexEntries)
+        .where(
+            and(
+                eq(vectorIndexEntries.targetId, targetId),
+                eq(vectorIndexEntries.targetType, targetType),
+            ),
+        )
+}
+
+async function rowsForObservation(id: string) {
+    const db = await getDb()
+    return await db.select().from(observations).where(eq(observations.id, id))
+}
+
+async function rowsForDiary(id: string) {
+    const db = await getDb()
+    return await db.select().from(diaryEntries).where(eq(diaryEntries.id, id))
+}
+
+async function expectSearchToOmit(phrase: string): Promise<void> {
+    const results = await searchMemory(
+        { limit: 10, query: phrase },
+        { embeddingProvider: new FakeEmbeddingProvider() },
+    )
+    expect(results.map(result => result.excerpt).join('\n')).not.toContain(
+        phrase,
+    )
 }

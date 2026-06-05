@@ -20,6 +20,7 @@ import {
 } from '@/database/support/save-policy'
 import { generateEmbeddingsForTargets } from '@/modules/embeddings/generate-target-embeddings'
 import HuggingFaceEmbeddingProvider from '@/modules/embeddings/hugging-face-embedding-provider'
+import { scheduleMemoryMaintenance } from '@/modules/memory/background-maintenance'
 import contentHash from '@/support/content-hash'
 import type { EmbeddingProviderContract } from '@/types/embedding-provider'
 import type { ObservationKind, SaveResult } from '@/types/memory'
@@ -46,6 +47,7 @@ export type SaveMemoriesInput = {
 
 export type SaveOptions = {
     embeddingProvider?: EmbeddingProviderContract
+    embeddingMode?: 'background' | 'disabled' | 'inline'
     projectUpdate?: {
         deletedFilePaths: string[]
         updatedFilePaths: string[]
@@ -133,7 +135,7 @@ async function saveKonteksMemory(
     })
 
     if (options.embedAfterSave !== false) {
-        await embedSavedTargets(options.embeddingProvider, createdAt, [
+        await embedSavedTargets(_context, options, createdAt, [
             { targetId: id, targetType: 'memory' },
         ])
     }
@@ -182,7 +184,8 @@ export async function saveKonteksMemories(
 
     if (newTargets.length > 0) {
         await embedSavedTargets(
-            _options.embeddingProvider,
+            context,
+            _options,
             new Date().toISOString(),
             newTargets,
         )
@@ -260,7 +263,7 @@ export async function saveKonteksDiary(
         })
     })
 
-    await embedSavedTargets(options.embeddingProvider, createdAt, [
+    await embedSavedTargets(_context, options, createdAt, [
         { targetId: id, targetType: 'diary' },
     ])
 
@@ -272,20 +275,39 @@ export async function saveKonteksDiary(
 }
 
 async function embedSavedTargets(
-    provider: EmbeddingProviderContract | undefined,
+    context: Project,
+    options: SaveOptions,
     createdAt: string,
     targets: Array<{ targetId: string; targetType: 'diary' | 'memory' }>,
 ): Promise<void> {
-    if (targets.length === 0) {
+    if (targets.length === 0 || options.embeddingMode === 'disabled') {
+        return
+    }
+
+    const embed = async () => {
+        await generateEmbeddingsForTargets(
+            options.embeddingProvider ?? new HuggingFaceEmbeddingProvider(),
+            targets,
+            createdAt,
+        )
+    }
+
+    if (options.embeddingMode === 'background') {
+        scheduleMemoryMaintenance(context, {
+            metadata: {
+                targetCount: targets.length,
+                targetTypes: [
+                    ...new Set(targets.map(target => target.targetType)),
+                ],
+            },
+            operation: embed,
+            operationName: 'embed_saved_targets',
+        })
         return
     }
 
     try {
-        await generateEmbeddingsForTargets(
-            provider ?? new HuggingFaceEmbeddingProvider(),
-            targets,
-            createdAt,
-        )
+        await embed()
     } catch {
         // Durable save succeeded; embedding is a best-effort retrieval index update.
     }
